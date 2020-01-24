@@ -330,6 +330,116 @@ class GradientDescent(PrimitiveVertex):
         self._accumulated_force = hdf[group_name]["accumulatedforce"]
 
 
+
+class BFGS(PrimitiveVertex):
+    """General interface for SciPy optimizers
+
+    Only the call to the optimizer is still needed
+    """
+
+    def __init__(self, name=None):
+        super(BFGS, self).__init__(name=name)
+        self.H = None
+        self.r0 = None
+        self.f0 = None
+        self.input.default.alpha = 70.0
+        self.input.default.max_step = 0.05
+
+    def command(self, positions, forces, alpha=None, output_displacements=True, max_step=None, mask=None):
+        positions = np.array(positions)
+        forces = np.array(forces)
+
+        if mask is not None:
+            masked = True
+            mask = np.array(mask)
+            # Preserve data
+            unmasked_positions = positions.copy()
+
+            # Mask input data
+            positions = positions[mask]
+            forces = forces[mask]
+        else:
+            masked = False
+
+        if self.r0 is None or self.f0 is None:
+            # skipping first step with BGFS
+            self.logger.warn('Skipping first step, need at least two steps')
+            self.r0 = positions.flat.copy()
+            self.f0 = forces.reshape(-1).copy()
+            r = positions
+            dr = np.zeros(positions.shape)
+        else:
+            f = forces
+            r = positions
+            num_atoms = len(positions)
+
+            f = f.reshape(-1)
+            self._update(r.flat, f, self.r0, self.f0, num_atoms, alpha=alpha)
+            omega, V = np.linalg.eigh(self.H)
+            dr = np.dot(V, np.dot(f, V) / np.fabs(omega)).reshape((-1, 3))
+            steplengths = (dr ** 2).sum(1) ** 0.5
+            dr = self._determine_step(dr, steplengths, max_step)
+            # update positions
+
+            self.r0 = r.flat.copy()
+            self.f0 = f.copy()
+
+        new_pos = r + dr
+        if masked:
+            unmasked_positions[mask] = new_pos
+            new_pos = unmasked_positions
+            disp = np.zeros(unmasked_positions.shape)
+            disp[mask] = dr
+        else:
+            disp = dr
+
+        if output_displacements:
+            return {
+                'positions': new_pos,
+                'displacements': disp
+            }
+        else:
+            return {'positions': new_pos}
+
+    def _determine_step(self, dr, steplengths, maxstep):
+        """Determine step to take according to maxstep
+
+        Normalize all steps as the largest step. This way
+        we still move along the eigendirection.
+        """
+        maxsteplength = np.max(steplengths)
+        if maxsteplength >= maxstep:
+            dr *= maxstep / maxsteplength
+        return dr
+
+    def _update(self, r, f, r0, f0, num_atoms, alpha=70.0):
+        if self.H is None:
+            self.H = np.eye(3 * num_atoms) * alpha
+
+        dr = r - r0
+        if np.abs(dr).max() < 1e-7:
+            self.logger.warn('Same configuration')
+            return
+
+        df = f - f0
+        a = np.dot(dr, df)
+        dg = np.dot(self.H, dr)
+        b = np.dot(dr, dg)
+        self.H -= np.outer(df, df) / a + np.outer(dg, dg) / b
+
+    def to_hdf(self, hdf=None, group_name=None):
+        super(BFGS, self).to_hdf(hdf=hdf, group_name=group_name)
+        hdf[group_name]["f0"] = self.f0
+        hdf[group_name]["r0"] = self.r0
+        hdf[group_name]["H"] = self.H
+
+    def from_hdf(self, hdf=None, group_name=None):
+        super(BFGS, self).from_hdf(hdf=hdf, group_name=group_name)
+        self.f0 = hdf[group_name]["f0"]
+        self.r0 = hdf[group_name]["r0"]
+        self.H = hdf[group_name]["H"]
+
+
 class HarmonicHamiltonian(PrimitiveVertex):
     """
 
