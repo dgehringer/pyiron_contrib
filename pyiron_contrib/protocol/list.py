@@ -138,7 +138,7 @@ class ListVertex(PrimitiveVertex):
             with hdf.open(group_name + "/children") as hdf5_server:
                 children = []
                 for n in np.arange(self.input.n_children, dtype=int):
-                    child = self.child_type(name="child_{}".format(n))
+                    child = self.child_type()
                     child.from_hdf(hdf=hdf5_server, group_name="child" + str(n))
                     child.graph_parent = self
                     children.append(child)
