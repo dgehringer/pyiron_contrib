@@ -49,7 +49,7 @@ class ListVertex(PrimitiveVertex):
 
     def __init__(self, child_type):
         if not issubclass(child_type, Vertex):
-            raise TypeError('ListVertex children must inherit from Protocol.')
+            raise TypeError('ListVertex children must inherit from Vertex.')
         self.children = None  # Ahead of super so the n_history call doesn't trigger the setter and find no children
         super(ListVertex, self).__init__()
         self.child_type = child_type
