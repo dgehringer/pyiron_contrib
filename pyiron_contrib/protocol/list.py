@@ -69,7 +69,7 @@ class ListVertex(PrimitiveVertex):
         super(ListVertex, self).finish()
 
     def _initialize(self, n_children):
-        children = [self.child_type(name="child_{}".format(n)) for n in range(n_children)]
+        children = [self.child_type() for _ in range(n_children)]
 
         # Locate children in graph
         for n, child in enumerate(children):
