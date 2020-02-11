@@ -27,17 +27,6 @@ class TestLazy(unittest.TestCase):
     TODO: Add tests for the rest of the magic methods that are set at class definition time.
     """
 
-    @classmethod
-    def tearDownClass(cls):
-        pass
-
-    @classmethod
-    def setUpClass(cls):
-        pass
-
-    def setUp(self):
-        pass
-
     def test_chaining_getitem_add_sub_mul_truediv(self):
         # Add to a lazy variable
         lazy = Lazy()
