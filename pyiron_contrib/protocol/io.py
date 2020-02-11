@@ -113,8 +113,11 @@ class Output(dict):
         if key not in list(self.keys()) and \
                 not isinstance(item, NotData) and \
                 not (isinstance(item, Lazy) and isinstance(~item, NotData)):
+            # Note: This restriction ensures that all output fields wind up defined at Vertex initialization. In this
+            #       way they are available for finding in other places, e.g. setting dumping periods. I'm not 100%
+            #       convinced I like this restriction though.
             raise ValueError("New output fields must be initialized with the type `NotData`. A shortcut to do this is "
-                             "to simply access the new field, i.e. `output.new_key`.")
+                             "to simply access the new field, e.g. `output.new_key`.")
         if not isinstance(item, Lazy):
             item = Lazy(item)
         super(Output, self).__setitem__(key, item)
@@ -124,7 +127,8 @@ class Output(dict):
 
     def __getitem__(self, item):
         if item not in list(self.keys()):
-            self.__setitem__(item, NotData())
+            # Note: I'm really not sure I like this syntax. If we keep it, we could do something similar for Input...
+            self.__setitem__(item, Lazy(NotData()))
         return super(Output, self).__getitem__(item)
 
     def __getattr__(self, item):
