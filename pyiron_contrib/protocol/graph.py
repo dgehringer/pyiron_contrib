@@ -3,15 +3,9 @@ from __future__ import print_function
 # Copyright (c) Max-Planck-Institut für Eisenforschung GmbH - Computational Materials Design (CM) Department
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
-import sys
-from pyiron.base.job.generic import GenericJob
-from pyiron_contrib.protocol.utils import IODictionary, InputDictionary, LoggerMixin, Event, EventHandler, \
-    Pointer, CrumbType, ordered_dict_get_last, Comparer, TimelineDict
+from pyiron_contrib.protocol.utils import LoggerMixin
 # from pyiron_contrib.protocol.utils.types import PyironJobTypeRegistry
-from pyiron_contrib.protocol.utils.pptree import print_tree as pptree
-from abc import ABC, abstractmethod
-from pyiron_contrib.protocol.utils.lazy import Lazy
-
+from abc import ABC
 
 """
 The goal here is to abstract and simplify the graph functionality.

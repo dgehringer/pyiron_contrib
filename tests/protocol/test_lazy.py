@@ -4,7 +4,7 @@
 
 import unittest
 import numpy as np
-from pyiron_contrib.protocol.utils.lazy import Lazy
+from pyiron_contrib.protocol.lazy import Lazy
 
 
 class Adder:
