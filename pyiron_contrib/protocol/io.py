@@ -29,7 +29,11 @@ __date__ = "Feb 10, 2020"
 
 class NotData:
     """A datatype to indicate that an input stack really doesn't have data (since `None` might be valid input!)"""
-    pass
+    def __eq__(self, other):
+        if isinstance(other, NotData):
+            return True
+        else:
+            return False
 
 
 class IOChannel(UserList, ABC, LoggerMixin):
@@ -46,6 +50,7 @@ class IOChannel(UserList, ABC, LoggerMixin):
 
     def __iadd__(self, other):
         self.push(other)
+        return self
 
     def __setitem__(self, key, value):
         self.logger.warning("Items cannot be assigned to stacks. Use `push`.")
@@ -72,8 +77,8 @@ class OutputChannel(IOChannel):
     """
 
     def __init__(self, buffer_length=1):
-        super(OutputChannel, self).__init__([NotData()] * buffer_length)
-        self._buffer_length = None
+        super(OutputChannel, self).__init__()
+        self._buffer_length = 0
         self.buffer_length = buffer_length
 
     @property
