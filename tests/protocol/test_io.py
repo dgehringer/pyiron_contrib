@@ -4,21 +4,21 @@
 
 import unittest
 from pyiron_contrib.protocol.lazy import Lazy
-from pyiron_contrib.protocol.io import InputStack, Input, Output, NotData
+from pyiron_contrib.protocol.io import InputChannel, Input, Output, NotData
 import numpy as np
 
 
 class TestInputStack(unittest.TestCase):
 
     def test_initialization(self):
-        self.assertEqual(len(InputStack()), 0)
-        self.assertTrue(np.all(InputStack([1, 2, 3]) == [1, 2, 3]))
-        self.assertTrue(np.all(InputStack(initlist=[1, 2, 3]) == [1, 2, 3]))
-        self.assertTrue(np.all(InputStack(default='a') == ['a']))
-        self.assertRaises(ValueError, InputStack.__init__, self, initlist=[1], default='a')
+        self.assertEqual(len(InputChannel()), 0)
+        self.assertTrue(np.all(InputChannel([1, 2, 3]) == [1, 2, 3]))
+        self.assertTrue(np.all(InputChannel(initlist=[1, 2, 3]) == [1, 2, 3]))
+        self.assertTrue(np.all(InputChannel(default='a') == ['a']))
+        self.assertRaises(ValueError, InputChannel.__init__, self, initlist=[1], default='a')
 
     def test_push(self):
-        stack = InputStack([0, 1])
+        stack = InputChannel([0, 1])
         stack.push(2)
         self.assertTrue(np.all(stack == [0, 1, 2]))
 
@@ -34,8 +34,8 @@ class TestInput(unittest.TestCase):
         self.assertRaises(ValueError, input_dict.__setattr__, 'key', 1)
 
         # Add some data channels
-        input_dict.channel1 = InputStack([1, NotData()])  # Will need to pass the first one
-        input_dict['channel2'] = InputStack(default=Lazy('a'))
+        input_dict.channel1 = InputChannel([1, NotData()])  # Will need to pass the first one
+        input_dict['channel2'] = InputChannel(default=Lazy('a'))
 
         # Make sure they're both there
         self.assertEqual(len(input_dict), 2)
@@ -47,7 +47,7 @@ class TestInput(unittest.TestCase):
             self.assertEqual(v, ref_dict[k])
 
         # Break the data stack
-        input_dict.channel3 = InputStack(default=Lazy(NotData()))
+        input_dict.channel3 = InputChannel(default=Lazy(NotData()))
         self.assertRaises(RuntimeError, input_dict.resolve)
 
 
