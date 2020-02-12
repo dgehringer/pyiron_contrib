@@ -5,6 +5,8 @@ from __future__ import print_function
 
 from collections import UserDict, UserList
 from pyiron_contrib.protocol.lazy import Lazy
+from abc import ABC, abstractmethod
+from pyiron_contrib.protocol.utils.misc import LoggerMixin
 
 """
 Containers for streamlining graph input and output
@@ -26,7 +28,27 @@ class NotData:
     pass
 
 
-class InputStack(UserList):
+class IOStack(UserList, ABC, LoggerMixin):
+    """An abstract class for handling stacks of lazy data."""
+
+    def __init__(self, *args, **kwargs):
+        super(IOStack, self).__init__(*args, **kwargs)
+
+    @abstractmethod
+    def push(self, item):
+        self.data.append(item)
+
+    def append(self, item):
+        self.push(item)
+
+    def __iadd__(self, other):
+        self.push(other)
+
+    def __setitem__(self, key, value):
+        self.logger.warning("Items cannot be assigned to stacks. Use `push`.")
+
+
+class InputStack(IOStack):
     """
     A list with an alternative initialization argument and a push method.
     """
@@ -39,14 +61,11 @@ class InputStack(UserList):
         else:
             super(InputStack, self).__init__(initlist)
 
-    def push(self, item):
-        self.append(item)
-
 
 class Input(dict):  #UserDict):  I'm having trouble with UserDict, .data, and recursion
     """
     Stores a collection of input stacks which can be resolved to get the top-most stack value which does not resolve to
-    an instance of `NotData`.
+    an instance of `NotData` or a (subset of) `OutputStack` containing any `NotData`.
 
     Raises a RuntimeError if it gets to the end of one of its stacks without finding valid data.
 
@@ -73,7 +92,11 @@ class Input(dict):  #UserDict):  I'm having trouble with UserDict, .data, and re
         for val in stack[::-1]:
             if isinstance(val, Lazy):
                 val = ~val
-            if not isinstance(val, NotData):
+            if isinstance(val, NotData):
+                continue  # Catches when the final element of an OutputStack is passed but not data
+            elif isinstance(val, (list, UserList)) and any(isinstance(item, NotData) for item in val):
+                continue  # Catches when multiple elements of an OutputStack are passed but contain missing data
+            else:
                 return val
         raise RuntimeError("Input stack ran out without finding data.")
 
@@ -87,6 +110,38 @@ class Input(dict):  #UserDict):  I'm having trouble with UserDict, .data, and re
 
     def __getattr__(self, item):
         return super(Input, self).__getitem__(item)
+
+
+class OutputStack(IOStack):
+    """
+    A list with fixed length which rotates out old values.
+    """
+
+    def __init__(self, buffer_length=1):
+        super(OutputStack, self).__init__([NotData()] * buffer_length)
+        self._buffer_length = None
+        self.buffer_length = buffer_length
+
+    @property
+    def buffer_length(self):
+        return self._buffer_length
+
+    @buffer_length.setter
+    def buffer_length(self, new_length):
+        new_length = int(new_length)
+        if new_length < 1:
+            raise ValueError("Output stacks have a minimum length of 1, got {}".format(new_length))
+        length_change = new_length - self._buffer_length
+        self._buffer_length = new_length
+
+        if length_change < 0:
+            self.data = self.data[-length_change:]
+        else:
+            self.data = length_change*[NotData()] + self.data
+
+    def push(self, item):
+        super(OutputStack, self).push(item)
+        self.data = self.data[1:]
 
 
 class Output(dict):
@@ -108,22 +163,13 @@ class Output(dict):
         return resolved_dict
 
     def __setitem__(self, key, item):
-        if key == '_ipython_canary_method_should_not_exist_':  # Stupid jupyter notebooks...
-            return
-        if key not in list(self.keys()) and \
-                not isinstance(item, NotData) and \
-                not (isinstance(item, Lazy) and isinstance(~item, NotData)):
-            # Note: This restriction ensures that all output fields wind up defined at Vertex initialization. In this
-            #       way they are available for finding in other places, e.g. setting dumping periods. I'm not 100%
-            #       convinced I like this restriction though.
-            raise ValueError("New output fields must be initialized with the type `NotData`. A shortcut to do this is "
-                             "to simply access the new field, e.g. `output.new_key`.")
-        if not isinstance(item, Lazy):
-            item = Lazy(item)
-        super(Output, self).__setitem__(key, item)
+        raise AttributeError("Set items using `add_channel`.")
 
     def __setattr__(self, key, item):
         self.__setitem__(key, item)
+
+    def add_channel(self, name, buffer_length=1):
+        super(Output, self).__setitem__(name, OutputStack(buffer_length=buffer_length))
 
     def __getitem__(self, item):
         if item not in list(self.keys()):
