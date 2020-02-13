@@ -217,11 +217,9 @@ class LazyForOutputChannel(Lazy):
     child class, we can simply call `output.foo.push(new_val)`, as we would intuitively expect.
     """
     def push(self, item):
-        print("Pushing to lazy output channel")
         self.value.push(item)
 
     def append(self, item):
-        print("Appending to lazy output channel")
         self.value.push(item)
 
     # item.__iadd__, i.e. +=, is already working as desired
