@@ -36,6 +36,12 @@ class NotData:
         else:
             return False
 
+    def __repr__(self):
+        return "NotData"
+
+    def __str__(self):
+        return "NotData"
+
 
 class IOChannel(UserList, ABC, LoggerMixin):
     """An abstract class for handling stacks of lazy data."""
@@ -55,6 +61,9 @@ class IOChannel(UserList, ABC, LoggerMixin):
 
     def __setitem__(self, key, value):
         self.logger.warning("Items cannot be assigned to stacks. Use `push`.")
+
+    def __str__(self):
+        return "{}({})".format(self.__class__.__name__, self.data.__str__())
 
 
 class InputChannel(IOChannel):
@@ -122,6 +131,12 @@ class IO(dict, ABC):
 
     def __getattr__(self, item):
         return super(IO, self).__getitem__(item)
+
+    def __str__(self):
+        rep = "{} with channel(s):\n".format(self.__class__.__name__)
+        for k, v in self.items():
+            rep += "\t{}: {}\n".format(k, v.__str__())
+        return rep
 
 
 class Input(IO):  # UserDict):  I'm having trouble with UserDict, it's .data attribute, and recursion with __setattr__

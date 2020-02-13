@@ -174,6 +174,9 @@ class Lazy:
             return self.value
         return Lazy(value=self, call=('__getattribute__', (item,), {}))
 
+    def __str__(self):
+        return "{}({})".format(self.__class__.__name__, self.value.__str__())
+
 
 class PatientDict(UserDict):
     def __setattr__(self, key, value):
