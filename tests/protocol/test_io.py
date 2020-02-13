@@ -90,11 +90,12 @@ class TestOutput(unittest.TestCase):
         output.add_channel('bar')
         output['baz'] = Lazy(OutputChannel())  # But we *can* wrap with Lazy if we want. It won't re-wrap.
 
-        ~output.foo.push(0)
-        output.bar.push(1).resolve()
-        output.baz.resolve().push(2)
-        # TODO: These are all gross syntax. Work out a better way to push to Lazy lists, or make it a list of Lazies.
-        #       Maybe we can decorate the added Lazy items so they do something special on a `push` call?
+        output.foo.push(0)
+        output.bar.append(1)
+        output.baz += 2
+        self.assertIsInstance(output.foo, Lazy)
+        self.assertIsInstance(output.bar, Lazy)
+        self.assertIsInstance(output.baz, Lazy)
 
         # Check that they wrap (unwrap) to (from) lazy ok
         ref_dict = {

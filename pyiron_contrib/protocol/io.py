@@ -7,6 +7,7 @@ from collections import UserDict, UserList
 from pyiron_contrib.protocol.lazy import Lazy
 from abc import ABC, abstractmethod
 from pyiron_contrib.protocol.utils.misc import LoggerMixin
+import types
 
 """
 Containers for streamlining graph input and output.
@@ -181,11 +182,32 @@ class Output(IO):
         return resolved_dict
 
     def __setitem__(self, key, item):
-        if not isinstance(item, Lazy):
-            item = Lazy(item)
-        if not isinstance(~item, OutputChannel):
-            raise ValueError("Output can only contain output channels but got", type(~item))
-        super(Output, self).__setitem__(key, item)
+        if isinstance(item, Lazy):
+            # Lazy isn't good enough for us, so make sure the user wasn't trying to be 'helpful'.
+            item = ~item
+        if not isinstance(item, OutputChannel):
+            raise ValueError("Output can only contain output channels but got", type(item))
+        super(Output, self).__setitem__(key, LazyForOutputChannel(item))
 
     def add_channel(self, channel_name, buffer_length=1):
-        super(Output, self).__setitem__(channel_name, Lazy(OutputChannel(buffer_length=buffer_length)))
+        super(Output, self).__setitem__(channel_name, LazyForOutputChannel(OutputChannel(buffer_length=buffer_length)))
+
+
+class LazyForOutputChannel(Lazy):
+    """
+    For `Output`, where we *know* that the object being wrapped is always an `OutputChannel`, we want to *not* be
+    lazy when pushing to the channel. With a regular lazy class, to update the channel, we would need
+    `output.foo.resolve().push(new_val)`
+
+    Actually, the resolution can go an number of places in that expression, but it has to go *somewhere*. With this
+    child class, we can simply call `output.foo.push(new_val)`, as we would intuitively expect.
+    """
+    def push(self, item):
+        print("Pushing to lazy output channel")
+        self.value.push(item)
+
+    def append(self, item):
+        print("Appending to lazy output channel")
+        self.value.push(item)
+
+    # item.__iadd__, i.e. +=, is already working as desired
