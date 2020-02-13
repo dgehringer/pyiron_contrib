@@ -7,7 +7,6 @@ from collections import UserDict, UserList
 from pyiron_contrib.protocol.lazy import Lazy
 from abc import ABC, abstractmethod
 from pyiron_contrib.protocol.utils.misc import LoggerMixin
-import types
 
 """
 Containers for streamlining graph input and output.
