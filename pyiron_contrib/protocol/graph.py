@@ -25,13 +25,14 @@ __date__ = "Feb 10, 2020"
 class Vertex(LoggerMixin, ABC):
     DEFAULT_STATE = "next"
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, vertex_name=None, **kwargs):
         super(Vertex, self).__init__()
 
         self.input = Input()
         self.output = Output()
+        self.init_io_channels()
         self.clock = 0
-        self.vertex_name = None
+        self.vertex_name = vertex_name
         self._vertex_state = self.DEFAULT_STATE
         self.possible_vertex_states = [self.DEFAULT_STATE]
 
@@ -44,6 +45,11 @@ class Vertex(LoggerMixin, ABC):
         if new_state not in self.possible_vertex_states:
             raise ValueError("New state not in list of possible states")
         self._vertex_state = new_state
+
+    @abstractmethod
+    def init_io_channels(self):
+        """Define channels for vertex input and output."""
+        pass
 
     def execute(self):
         """Just parse the input and do your physics, then store the output."""
@@ -166,9 +172,12 @@ class Vertices(DotDict):
     synchonized.
     """
 
+    def __init__(self):
+        pass
+
     def __setitem__(self, key, value):
         if not isinstance(value, Vertex):
-            raise ValueError("Vertices can only contain Vertex objects but got {}".format(type(value)))
+            raise TypeError("Vertices can only contain Vertex objects but got {}".format(type(value)))
         value.vertex_name = key
         super(Vertices, self).__setitem__(key, value)
 
@@ -179,11 +188,14 @@ class Edges(DotDict):
     a given state.
     """
 
+    def __init__(self):
+        pass
+
     def __setitem__(self, key, value):
         """Set vertex as a dead end -- all states lead to `None`."""
 
         if not isinstance(value, Vertex):
-            raise ValueError("Edges can only be established for Vertex objects but got {}".format(type(value)))
+            raise TypeError("Edges can only be established for Vertex objects but got {}".format(type(value)))
         if key != value.vertex_name:
             raise ValueError("Edge dictionaries must have the same name as the vertex they are for. Expected {}"
                              "but got {}".format(value.vertex_name, key))
@@ -214,5 +226,14 @@ class Edges(DotDict):
                 state = Vertex.DEFAULT_STATE
                 next_vertex = args[n + 1]
 
-            self[vertex.vertex_name][state] = next_vertex.vertex_name
+            if not (isinstance(vertex, Vertex) and isinstance(next_vertex, Vertex)):
+                raise TypeError("Edge flow must be between Vertex objects, but got {} and {}".format(
+                    type(vertex), type(next_vertex)
+                ))
 
+            if state not in vertex.possible_vertex_states:
+                raise KeyError("Got state {} which is not in {} for vertex {}".format(
+                    state, vertex.possible_vertex_states, vertex.vertex_name
+                ))
+
+            self[vertex.vertex_name][state] = next_vertex.vertex_name
