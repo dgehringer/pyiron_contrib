@@ -19,6 +19,7 @@ class DummyVertex(Vertex):
 class DummyGraph(Graph):
     def init_io_channels(self):
         self.input.add_channel('x0')
+        self.input.add_channel('x1')
         self.output.add_channel('sum')
 
     def set_vertices(self):
@@ -37,7 +38,7 @@ class DummyGraph(Graph):
 
     def wire_data_flow(self):
         v1, v2, v3 = self.vertices.v1, self.vertices.v2, self.vertices.v3
-        v1.input.x += self.input.x0
+        v1.input.x += self.input.x0 + self.input.x1
         v2.input.x += v1.output.y[-1]
         v3.input.x += v2.output.y[-1]
 
@@ -74,6 +75,7 @@ class TestDicts(unittest.TestCase):
         self.assertRaises(TypeError, edges.__setitem__, 'foo', 1)
         self.assertRaises(ValueError, edges.__setitem__, 'foo', self.v1)
         edges.initialize(self.v1)
+        print([v is None for v in edges.v1.values()])
         self.assertTrue(np.all(v is None for v in edges.v1.values()))
         edges.v2 = self.v2
         self.assertTrue(np.all(v is None for v in edges.v2.values()))
@@ -106,7 +108,8 @@ class TestGraph(unittest.TestCase):
                 self.assertEqual(vv, ref_edges[k][s])
 
         # Check resolution
-        graph.input.x0 += 0
+        graph.input.x0 += 1
+        graph.input.x1 += -1
         graph.execute()
         self.assertEqual(~graph.v1.output.y[-1], 1)
         self.assertEqual(~graph.v2.output.y[-1], 2)

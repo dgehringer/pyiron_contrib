@@ -42,14 +42,14 @@ class NotData:
         return "NotData"
 
 
-class IOChannel(UserList, ABC, LoggerMixin):
+class IOChannel(Lazy, ABC, LoggerMixin):
     """An abstract class for handling stacks of lazy data."""
 
     def __init__(self, *args, **kwargs):
         super(IOChannel, self).__init__(*args, **kwargs)
 
     def push(self, item):
-        self.data.append(item)
+        self.value.append(item)
 
     def append(self, item):
         self.push(item)
@@ -64,21 +64,22 @@ class IOChannel(UserList, ABC, LoggerMixin):
     def __str__(self):
         return "{}({})".format(self.__class__.__name__, self.data.__str__())
 
+    def __len__(self):
+        return len(self.value)
+
 
 class InputChannel(IOChannel):
     """A list with an alternative initialization argument and a push method."""
 
-    def __init__(self, initlist=None, default=None):
-        if initlist is not None and default is not None:
-            raise ValueError("init_list and default cannot both be provided")
+    def __init__(self, default=None):
         if default is not None:
-            super(InputChannel, self).__init__([default])
+            super(InputChannel, self).__init__(value=[default])
         else:
-            super(InputChannel, self).__init__(initlist)
+            super(InputChannel, self).__init__(value=[])
 
     def resolve(self):
-        for val in self[::-1]:
-            if isinstance(val, (Lazy, InputChannel)):
+        for val in self.value[::-1]:
+            while isinstance(val, Lazy):
                 val = ~val
             if isinstance(val, NotData):
                 continue  # Catches when the final element of an OutputStack is passed but not data
@@ -87,9 +88,6 @@ class InputChannel(IOChannel):
             else:
                 return val
         raise RuntimeError("Input stack ran out without finding data.")
-
-    def __invert__(self):
-        return self.resolve()
 
 
 class OutputChannel(IOChannel):
@@ -101,7 +99,7 @@ class OutputChannel(IOChannel):
     """
 
     def __init__(self, buffer_length=1):
-        super(OutputChannel, self).__init__()
+        super(OutputChannel, self).__init__(value=[])
         self._buffer_length = 0
         self.buffer_length = buffer_length
 
@@ -118,13 +116,13 @@ class OutputChannel(IOChannel):
         self._buffer_length = new_length
 
         if length_change < 0:
-            self.data = self.data[-length_change:]
+            self.value = self.value[-length_change:]
         else:
-            self.data = length_change*[NotData()] + self.data
+            self.value = length_change*[NotData()] + self.value
 
     def push(self, item):
         super(OutputChannel, self).push(item)
-        self.data = self.data[1:]
+        self.value = self.value[1:]
 
 
 class IO(dict, ABC):
@@ -132,9 +130,12 @@ class IO(dict, ABC):
     def __init__(self):
         super(IO, self).__init__()  # Don't allow state from initialization
 
-    @abstractmethod
     def resolve(self):
-        pass
+        """Resolve all lazy values and return them in a regular dictionary."""
+        resolved_dict = {}
+        for k, v in self.items():
+            resolved_dict[k] = ~v
+        return resolved_dict
 
     def __invert__(self):
         """Warning: syntactic sugar does not work when chaining the resolution with other calls."""
@@ -165,21 +166,13 @@ class Input(IO):  # UserDict):  I'm having trouble with UserDict, it's .data att
     Allows attribute-style setting and getting.
     """
 
-    def resolve(self):
-        resolved_dict = {}
-        for k, v in self.items():
-            resolved_dict[k] = v.resolve()
-        return resolved_dict
-
     def __setitem__(self, key, item):
         if not isinstance(item, InputChannel):
-            raise ValueError("Input only accepts objects of type InputStack as attributes but got {}.".format(
-                type(item)
-            ))
+            raise ValueError("Input only accepts InputChannel attributes but got {}.".format(type(item)))
         super(Input, self).__setitem__(key, item)
 
-    def add_channel(self, channel_name, initlist=None, default=None):
-        self.__setitem__(channel_name, InputChannel(initlist=initlist, default=default))
+    def add_channel(self, channel_name, default=None):
+        self.__setitem__(channel_name, InputChannel(default=default))
 
 
 class Output(IO):
@@ -188,41 +181,11 @@ class Output(IO):
 
     *Only* allows items to be set if they are instances of `OutputChannel`.
     """
-    def __init__(self):
-        super(Output, self).__init__()  # Don't allow state from initialization
-
-    def resolve(self):
-        """Resolve all lazy values and return them in a regular dictionary."""
-        resolved_dict = {}
-        for k, v in self.items():
-            resolved_dict[k] = ~v
-        return resolved_dict
 
     def __setitem__(self, key, item):
-        if isinstance(item, Lazy):
-            # Lazy isn't good enough for us, so make sure the user wasn't trying to be 'helpful'.
-            item = ~item
         if not isinstance(item, OutputChannel):
-            raise ValueError("Output can only contain output channels but got", type(item))
-        super(Output, self).__setitem__(key, LazyForOutputChannel(item))
+            raise ValueError("Output only accepts OutputChannel attributes but got", type(item))
+        super(Output, self).__setitem__(key, item)
 
     def add_channel(self, channel_name, buffer_length=1):
-        super(Output, self).__setitem__(channel_name, LazyForOutputChannel(OutputChannel(buffer_length=buffer_length)))
-
-
-class LazyForOutputChannel(Lazy):
-    """
-    For `Output`, where we *know* that the object being wrapped is always an `OutputChannel`, we want to *not* be
-    lazy when pushing to the channel. With a regular lazy class, to update the channel, we would need
-    `output.foo.resolve().push(new_val)`
-
-    Actually, the resolution can go an number of places in that expression, but it has to go *somewhere*. With this
-    child class, we can simply call `output.foo.push(new_val)`, as we would intuitively expect.
-    """
-    def push(self, item):
-        self.value.push(item)
-
-    def append(self, item):
-        self.value.push(item)
-
-    # item.__iadd__, i.e. +=, is already working as desired
+        super(Output, self).__setitem__(channel_name, OutputChannel(buffer_length=buffer_length))

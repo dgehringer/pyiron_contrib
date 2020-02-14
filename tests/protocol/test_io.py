@@ -24,10 +24,8 @@ class TestChannel(unittest.TestCase):
 
     def test_input_channel(self):
         self.assertEqual(len(InputChannel()), 0)
-        self.assertTrue(np.all(InputChannel([1, 2, 3]) == [1, 2, 3]))
-        self.assertTrue(np.all(InputChannel(initlist=[1, 2, 3]) == [1, 2, 3]))
-        self.assertTrue(np.all(InputChannel(default='a') == ['a']))
-        self.assertRaises(ValueError, InputChannel.__init__, self, initlist=[1], default='a')
+        self.assertTrue(np.all(InputChannel([1, 2, 3]).resolve() == [1, 2, 3]))
+        self.assertTrue(np.all(InputChannel(default='a').resolve() == 'a'))
 
     def test_output_channel(self):
         channel = OutputChannel(3)
@@ -37,10 +35,10 @@ class TestChannel(unittest.TestCase):
 
         channel.buffer_length = 4
         self.assertEqual(len(channel), 4)
-        self.assertIsInstance(channel[0], NotData)
+        self.assertIsInstance(~channel[0], NotData)
         channel.buffer_length = 2
         self.assertEqual(len(channel), 2)
-        self.assertTrue(np.all(channel == [1, 2]))
+        self.assertTrue(np.all(channel.resolve() == [1, 2]))
 
         with self.assertRaises(ValueError):
             channel.buffer_length = 'a'
@@ -59,7 +57,8 @@ class TestInput(unittest.TestCase):
         self.assertRaises(ValueError, input_dict.__setattr__, 'key', 1)
 
         # Add some data channels
-        input_dict.channel1 = InputChannel([1, NotData()])  # Will need to pass the first one
+        input_dict.channel1 = InputChannel(1)
+        input_dict.channel1 += NotData()  # Will need to pass the first one
         input_dict['channel2'] = InputChannel(default=Lazy('a'))
 
         # Make sure they're both there
@@ -88,7 +87,7 @@ class TestOutput(unittest.TestCase):
 
         output.foo = OutputChannel(buffer_length=2)  # Output automatically wraps with Lazy, so we don't need to
         output.add_channel('bar')
-        output['baz'] = Lazy(OutputChannel())  # But we *can* wrap with Lazy if we want. It won't re-wrap.
+        output['baz'] = OutputChannel() # But we *can* wrap with Lazy if we want. It won't re-wrap.
 
         output.foo.push(0)
         output.bar.append(1)
