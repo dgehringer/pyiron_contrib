@@ -53,7 +53,6 @@ class Vertex(LoggerMixin, ABC):
 
     def execute(self):
         """Just parse the input and do your physics, then store the output."""
-        print("{} unresolved input = {}\n resolved input = {}".format(self.vertex_name, self.input, self.input.resolve()))
         output_data = self.function(**self.input.resolve())
         self.update_and_archive(output_data)
 
@@ -71,7 +70,6 @@ class Vertex(LoggerMixin, ABC):
         pass
 
     def update_and_archive(self, output_data):
-        print("Updating {}".format(self.vertex_name))
         for key, value in output_data.items():
             getattr(self.output, key).push(value)
 

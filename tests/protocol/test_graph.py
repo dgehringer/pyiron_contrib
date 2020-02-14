@@ -13,15 +13,10 @@ class DummyVertex(Vertex):
         self.output.add_channel('y')
 
     def function(self, x):
-        print(self.vertex_name, "Summing ", x)
         return {'y': x + 1}
 
 
 class DummyGraph(Graph):
-    def function(self, *args, **kwargs):
-        print("Input = ", self.input.resolve())
-        return super(DummyGraph, self).function(*args, **kwargs)
-
     def init_io_channels(self):
         self.input.add_channel('x0')
         self.output.add_channel('sum')
@@ -42,15 +37,11 @@ class DummyGraph(Graph):
 
     def wire_data_flow(self):
         v1, v2, v3 = self.vertices.v1, self.vertices.v2, self.vertices.v3
-        print("Wiring data")
-        print(v1.input.x, type(v1.input.x))
-        print(self.input.x0, type(self.input.x0))
         v1.input.x += self.input.x0
         v2.input.x += v1.output.y[-1]
         v3.input.x += v2.output.y[-1]
 
     def get_output(self):
-        print("Sum =", ~self.vertices.v3.output.y[-1])
         return {'sum': ~self.vertices.v3.output.y[-1]}
 
 
