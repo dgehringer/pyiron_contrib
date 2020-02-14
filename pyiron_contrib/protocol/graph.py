@@ -53,6 +53,7 @@ class Vertex(LoggerMixin, ABC):
 
     def execute(self):
         """Just parse the input and do your physics, then store the output."""
+        print("{} unresolved input = {}\n resolved input = {}".format(self.vertex_name, self.input, self.input.resolve()))
         output_data = self.function(**self.input.resolve())
         self.update_and_archive(output_data)
 
@@ -70,8 +71,9 @@ class Vertex(LoggerMixin, ABC):
         pass
 
     def update_and_archive(self, output_data):
+        print("Updating {}".format(self.vertex_name))
         for key, value in output_data.items():
-            getattr(self, key).push(value)
+            getattr(self.output, key).push(value)
 
         self._update_archive()
 
@@ -93,6 +95,8 @@ class Graph(Vertex):
         self._initialize_edges()
         self.set_edges()
         self.wire_data_flow()
+        if self.starting_vertex is None:
+            self.logger.warn("Starting vertex not set for {}".format(self.vertex_name))
 
         # On initialization, set the active vertex to starting vertex
         self.active_vertex = self.starting_vertex
@@ -102,7 +106,7 @@ class Graph(Vertex):
         """Add child vertices to the graph."""
         pass
 
-    def _initialize_edge(self):
+    def _initialize_edges(self):
         for v in self.vertices.values():
             self.edges.initialize(v)
 

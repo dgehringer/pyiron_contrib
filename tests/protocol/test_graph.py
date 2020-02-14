@@ -13,10 +13,15 @@ class DummyVertex(Vertex):
         self.output.add_channel('y')
 
     def function(self, x):
+        print(self.vertex_name, "Summing ", x)
         return {'y': x + 1}
 
 
 class DummyGraph(Graph):
+    def function(self, *args, **kwargs):
+        print("Input = ", self.input.resolve())
+        return super(DummyGraph, self).function(*args, **kwargs)
+
     def init_io_channels(self):
         self.input.add_channel('x0')
         self.output.add_channel('sum')
@@ -33,15 +38,20 @@ class DummyGraph(Graph):
             v2, Vertex.DEFAULT_STATE,
             v3
         )
+        self.starting_vertex = v1
 
     def wire_data_flow(self):
         v1, v2, v3 = self.vertices.v1, self.vertices.v2, self.vertices.v3
-        v1.input.x = self.input.x0
-        v2.input.x = v1.output.y
-        v3.input.x = v2.output.y
+        print("Wiring data")
+        print(v1.input.x, type(v1.input.x))
+        print(self.input.x0, type(self.input.x0))
+        v1.input.x += self.input.x0
+        v2.input.x += v1.output.y[-1]
+        v3.input.x += v2.output.y[-1]
 
     def get_output(self):
-        return {'sum': ~self.vertices.v3.output.y}
+        print("Sum =", ~self.vertices.v3.output.y[-1])
+        return {'sum': ~self.vertices.v3.output.y[-1]}
 
 
 class TestDicts(unittest.TestCase):
@@ -82,3 +92,32 @@ class TestDicts(unittest.TestCase):
         edges.set_flow_chain(self.v1, self.v2, 'next', self.v1)
         self.assertEqual(edges.v1.next, 'v2')
         self.assertEqual(edges['v2']['next'], 'v1')
+
+
+class TestVertex(unittest.TestCase):
+    pass
+
+
+class TestGraph(unittest.TestCase):
+
+    def test_graph(self):
+        graph = DummyGraph()
+
+        # Check setup
+        self.assertTrue(np.all(list(graph.vertices.keys()) == ['v1', 'v2', 'v3']))
+        ref_edges = {
+            'v1': {'next': 'v2'},
+            'v2': {'next': 'v3'},
+            'v3': {'next': None},
+        }
+        for k, v in graph.edges.items():
+            for s, vv in v.items():
+                self.assertEqual(vv, ref_edges[k][s])
+
+        # Check resolution
+        graph.input.x0 += 0
+        graph.execute()
+        self.assertEqual(~graph.v1.output.y[-1], 1)
+        self.assertEqual(~graph.v2.output.y[-1], 2)
+        self.assertEqual(~graph.v3.output.y[-1], 3)
+        self.assertEqual(~graph.output.sum[-1], 3)

@@ -76,6 +76,21 @@ class InputChannel(IOChannel):
         else:
             super(InputChannel, self).__init__(initlist)
 
+    def resolve(self):
+        for val in self[::-1]:
+            if isinstance(val, (Lazy, InputChannel)):
+                val = ~val
+            if isinstance(val, NotData):
+                continue  # Catches when the final element of an OutputStack is passed but not data
+            elif isinstance(val, (list, UserList)) and any(isinstance(item, NotData) for item in val):
+                continue  # Catches when multiple elements of an OutputStack are passed but contain missing data
+            else:
+                return val
+        raise RuntimeError("Input stack ran out without finding data.")
+
+    def __invert__(self):
+        return self.resolve()
+
 
 class OutputChannel(IOChannel):
     """
@@ -153,30 +168,18 @@ class Input(IO):  # UserDict):  I'm having trouble with UserDict, it's .data att
     def resolve(self):
         resolved_dict = {}
         for k, v in self.items():
-            resolved_dict[k] = self._resolve_input_stack(v)
+            resolved_dict[k] = v.resolve()
         return resolved_dict
-
-    @staticmethod
-    def _resolve_input_stack(stack):
-        for val in stack[::-1]:
-            if isinstance(val, Lazy):
-                val = ~val
-            if isinstance(val, NotData):
-                continue  # Catches when the final element of an OutputStack is passed but not data
-            elif isinstance(val, (list, UserList)) and any(isinstance(item, NotData) for item in val):
-                continue  # Catches when multiple elements of an OutputStack are passed but contain missing data
-            else:
-                return val
-        raise RuntimeError("Input stack ran out without finding data.")
 
     def __setitem__(self, key, item):
         if not isinstance(item, InputChannel):
-            raise ValueError("Input only accepts objects of type InputStack as attributes.")
+            raise ValueError("Input only accepts objects of type InputStack as attributes but got {}.".format(
+                type(item)
+            ))
         super(Input, self).__setitem__(key, item)
 
     def add_channel(self, channel_name, initlist=None, default=None):
-        channel = InputChannel(initlist=initlist, default=default)
-        self.__setitem__(channel_name, channel)
+        self.__setitem__(channel_name, InputChannel(initlist=initlist, default=default))
 
 
 class Output(IO):
