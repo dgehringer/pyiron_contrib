@@ -75,7 +75,6 @@ class TestDicts(unittest.TestCase):
         self.assertRaises(TypeError, edges.__setitem__, 'foo', 1)
         self.assertRaises(ValueError, edges.__setitem__, 'foo', self.v1)
         edges.initialize(self.v1)
-        print([v is None for v in edges.v1.values()])
         self.assertTrue(np.all(v is None for v in edges.v1.values()))
         edges.v2 = self.v2
         self.assertTrue(np.all(v is None for v in edges.v2.values()))
