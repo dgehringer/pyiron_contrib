@@ -1,8 +1,8 @@
-from __future__ import print_function
 # coding: utf-8
 # Copyright (c) Max-Planck-Institut für Eisenforschung GmbH - Computational Materials Design (CM) Department
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
+from __future__ import print_function
 from pyiron_contrib.protocol.utils import LoggerMixin
 from pyiron_contrib.protocol.io import Input, Output
 from abc import ABC, abstractmethod
@@ -26,7 +26,7 @@ class Vertex(LoggerMixin, ABC):
     DEFAULT_STATE = "next"
 
     def __init__(self, *args, vertex_name=None, **kwargs):
-        super(Vertex, self).__init__()
+        super(Vertex, self).__init__(*args, **kwargs)
 
         self.input = Input()
         self.output = Output()
@@ -35,6 +35,7 @@ class Vertex(LoggerMixin, ABC):
         self.vertex_name = vertex_name
         self._vertex_state = self.DEFAULT_STATE
         self.possible_vertex_states = [self.DEFAULT_STATE]
+        self.parent_graph = None
 
     @property
     def vertex_state(self):
@@ -53,7 +54,7 @@ class Vertex(LoggerMixin, ABC):
 
     def execute(self):
         """Just parse the input and do your physics, then store the output."""
-        output_data = self.function(**self.input.resolve())
+        output_data = self.function(**self.input.resolve()) or {}
         self.update_and_archive(output_data)
 
     @abstractmethod
@@ -78,12 +79,28 @@ class Vertex(LoggerMixin, ABC):
     def _update_archive(self):
         pass
 
+    def get_graph_location(self):
+        return self._get_graph_location()[:-1]  # Cut the trailing underscore
+
+    def _get_graph_location(self, loc=""):
+        new_loc = self.vertex_name + "_" + loc
+        if self.parent_graph is None:
+            return new_loc
+        else:
+            return self.parent_graph._get_graph_location(loc=new_loc)
+
+    def to_hdf(self, hdf=None, group_name=None):
+        pass
+
+    def from_hdf(self, hdf=None, group_name=None):
+        pass
+
 
 class Graph(Vertex):
-    def __init__(self):
-        super(Graph, self).__init__()
+    def __init__(self, *args, **kwargs):
+        super(Graph, self).__init__(*args, **kwargs)
 
-        self.vertices = Vertices()
+        self.vertices = Vertices(self)
         self.edges = Edges()
         self.starting_vertex = None
         self.restarting_vertex = None
@@ -157,6 +174,10 @@ class Graph(Vertex):
     def __getattr__(self, item):
         return getattr(self.vertices, item)
 
+    def set_clock_for_all_vertices(self, clock):
+        for v in self.vertices.values():
+            v.clock = clock
+
 
 class DotDict(dict):
     """A dictionary which allows `.` setting and getting for items."""
@@ -174,14 +195,23 @@ class Vertices(DotDict):
     synchonized.
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, owner):
+        """
+        args:
+            owner (Graph): The graph to which these vertices belong.
+        """
+        super(Vertices, self).__init__()
+        self._owner = owner
 
     def __setitem__(self, key, value):
-        if not isinstance(value, Vertex):
-            raise TypeError("Vertices can only contain Vertex objects but got {}".format(type(value)))
-        value.vertex_name = key
-        super(Vertices, self).__setitem__(key, value)
+        if key == '_owner' and isinstance(value, Graph):
+            super(DotDict, self).__setattr__(key, value)
+        else:
+            if not isinstance(value, Vertex):
+                raise TypeError("Vertices can only contain Vertex objects but got {}".format(type(value)))
+            value.vertex_name = key
+            value.parent_graph = self._owner
+            super(Vertices, self).__setitem__(key, value)
 
 
 class Edges(DotDict):
@@ -191,7 +221,7 @@ class Edges(DotDict):
     """
 
     def __init__(self):
-        pass
+        super(Edges, self).__init__()
 
     def __setitem__(self, key, value):
         """Set vertex as a dead end -- all states lead to `None`."""

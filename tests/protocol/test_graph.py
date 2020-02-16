@@ -61,7 +61,7 @@ class TestDicts(unittest.TestCase):
     def test_vertices(self):
         with self.assertRaises(TypeError):
             verts = Vertices(foo=None)
-        verts = Vertices()
+        verts = Vertices(DummyGraph())
         self.assertRaises(TypeError, verts.__setitem__, verts, 'foo', 1)
         verts.foo = self.v1
         self.assertEqual(self.v1.vertex_name, 'foo')

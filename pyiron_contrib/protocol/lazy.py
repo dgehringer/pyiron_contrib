@@ -1,9 +1,10 @@
-from __future__ import print_function
 # coding: utf-8
 # Copyright (c) Max-Planck-Institut für Eisenforschung GmbH - Computational Materials Design (CM) Department
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
+from __future__ import print_function
 from collections import UserDict
+from numpy.linalg import norm as nplanorm
 
 """
 To wire graphs before evaluating them, we will need a data type which is extremely lazy.
@@ -17,6 +18,15 @@ __maintainer__ = "Liam Huber"
 __email__ = "huber@mpie.de"
 __status__ = "development"
 __date__ = "Feb 10, 2020"
+
+
+class LinalgSpoof:
+    @staticmethod
+    def norm(x, ord=2, axis=None, keepdims=False):
+        if isinstance(x, NotData):
+            return x
+        else:
+            return nplanorm(x, ord=ord, axis=axis, keepdims=keepdims)
 
 
 def _set_lazy_magic():
@@ -128,7 +138,7 @@ class Lazy:
     def resolve(self):
         if self._call is None:
             if isinstance(self.value, Lazy):
-                return ~self.value
+                return self.value.resolve()
             else:
                 return self.value
         else:
@@ -139,7 +149,8 @@ class Lazy:
             args = self._resolve_args(args)
             kwargs = self._resolve_kwargs(kwargs)
             if isinstance(self.value, Lazy):
-                return getattr(~self.value, atr)(*args, **kwargs)
+                res_val = self.value.resolve()
+                return getattr(res_val, atr)(*args, **kwargs)
             else:
                 return getattr(self.value, atr)(*args, **kwargs)
 
@@ -149,7 +160,7 @@ class Lazy:
         new_args = []
         for arg in args:
             if isinstance(arg, Lazy):
-                new_args.append(~arg)
+                new_args.append(arg.resolve())
             else:
                 new_args.append(arg)
         return tuple(new_args)
@@ -160,7 +171,7 @@ class Lazy:
         new_kwargs = {}
         for k, v in kwargs.items():
             if isinstance(v, Lazy):
-                new_kwargs[k] = ~v
+                new_kwargs[k] = v.resolve()
             else:
                 new_kwargs[k] = v
         return new_kwargs
@@ -177,6 +188,29 @@ class Lazy:
     def __str__(self):
         return "{}({})".format(self.__class__.__name__, self.value.__str__())
 
+    def norm(self, ord=2, axis=None, keepdims=False):
+        """
+        Lazily apply Numpy's linalg norm.
+
+        Docstrings directly copied from the `numpy docs`_.
+
+        _`numpy docs`: https://docs.scipy.org/doc/numpy/reference/generated/numpy.linalg.norm.html
+
+        Args:
+            ord (non-zero int/inf/-inf/'fro'/'nuc'): Order of the norm. inf means numpy’s inf object. (Default is 2).
+            axis (int/2-tuple of ints/None): If axis is an integer, it specifies the axis of x along which to compute
+                the vector norms. If axis is a 2-tuple, it specifies the axes that hold 2-D matrices, and the matrix
+                norms of these matrices are computed. If axis is None then either a vector norm (when x is 1-D) or a
+                matrix norm (when x is 2-D) is returned. (Default is None.)
+            keepdims (bool): If this is set to True, the axes which are normed over are left in the result as dimensions
+                with size one. With this option the result will broadcast correctly against the original x. (Default is
+                False)
+
+        returns:
+            (float/numpy.ndarray): Norm of the matrix or vector(s).
+        """
+        return Lazy(value=Lazy(LinalgSpoof), call=('norm', (self,), {'ord': ord, 'axis': axis, 'keepdims': keepdims}))
+
 
 class PatientDict(UserDict):
     def __setattr__(self, key, value):
@@ -186,7 +220,7 @@ class PatientDict(UserDict):
         resolved_dict = {}
         for k, v in self.__dict__.items():
             if isinstance(v, Lazy):
-                resolved_dict[k] = ~v
+                resolved_dict[k] = v.resolve()
             else:
                 resolved_dict[k] = v
 
@@ -195,9 +229,39 @@ class PatientDict(UserDict):
 
     def __getitem__(self, item):
         if isinstance(self.__dict__[item], Lazy):
-            return ~self.__dict__[item]
+            return self.__dict__[item].resolve()
         else:
             return self.__dict__[item]
 
     def __getattr__(self, item):
         self.__getitem__(item)
+
+
+class NotData(object):
+    """A datatype to indicate that an input stack really doesn't have data (since `None` might be valid input!)"""
+    def __eq__(self, other):
+        if isinstance(other, NotData):
+            return True
+        else:
+            return False
+
+    def __repr__(self):
+        return "<NotData>"
+
+    def __str__(self):
+        return "notdata"
+
+    def __getitem__(self, item):
+        return self
+
+    def __getattribute__(self, item):
+        try:
+            return super(NotData, self).__getattribute__(item)
+        except AttributeError:
+            return self
+
+    def __getattr__(self, item):
+        return self
+
+    def __call__(self, *args, **kwargs):
+        return self

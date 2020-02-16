@@ -4,7 +4,7 @@
 
 import unittest
 import numpy as np
-from pyiron_contrib.protocol.lazy import Lazy
+from pyiron_contrib.protocol.lazy import Lazy, NotData
 
 
 class Adder:
@@ -77,3 +77,13 @@ class TestLazy(unittest.TestCase):
 
         lazy /= 3.
         self.assertTrue(np.all(~lazy == array))
+
+    def test_norm(self):
+        ra = np.random.rand(3,3)
+        lazy = Lazy()
+        lazy_norm = lazy.norm(axis=0)
+        lazy.value = ra
+        self.assertTrue(np.all(~lazy_norm == np.linalg.norm(ra, axis=0)))
+
+    def test_lazy_notdata(self):
+        self.assertIsInstance(Lazy(NotData()).foo(1, 2, 3)[0].resolve(), NotData)

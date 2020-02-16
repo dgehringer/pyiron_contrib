@@ -1,11 +1,11 @@
-from __future__ import print_function
 # coding: utf-8
 # Copyright (c) Max-Planck-Institut für Eisenforschung GmbH - Computational Materials Design (CM) Department
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
-from collections import UserDict, UserList
-from pyiron_contrib.protocol.lazy import Lazy
-from abc import ABC, abstractmethod
+from __future__ import print_function
+from collections import UserList
+from pyiron_contrib.protocol.lazy import Lazy, NotData
+from abc import ABC
 from pyiron_contrib.protocol.utils.misc import LoggerMixin
 
 """
@@ -27,21 +27,6 @@ __status__ = "development"
 __date__ = "Feb 10, 2020"
 
 
-class NotData:
-    """A datatype to indicate that an input stack really doesn't have data (since `None` might be valid input!)"""
-    def __eq__(self, other):
-        if isinstance(other, NotData):
-            return True
-        else:
-            return False
-
-    def __repr__(self):
-        return "NotData"
-
-    def __str__(self):
-        return "NotData"
-
-
 class IOChannel(Lazy, ABC, LoggerMixin):
     """An abstract class for handling stacks of lazy data."""
 
@@ -61,8 +46,8 @@ class IOChannel(Lazy, ABC, LoggerMixin):
     def __setitem__(self, key, value):
         self.logger.warning("Items cannot be assigned to stacks. Use `push`.")
 
-    def __str__(self):
-        return "{}({})".format(self.__class__.__name__, self.data.__str__())
+    # def __str__(self):
+    #     return "{}({})".format(self.__class__.__name__, self.data.__str__())
 
     def __len__(self):
         return len(self.value)
@@ -79,11 +64,13 @@ class InputChannel(IOChannel):
 
     def resolve(self):
         for val in self.value[::-1]:
-            while isinstance(val, Lazy):
-                val = ~val
-            if isinstance(val, NotData):
+            if isinstance(val, Lazy):
+                val = val.resolve()
+            if isinstance(val, (NotData, type(NotImplemented))):
+                # TODO: Add tests for the NotImplemented case, and probably a logger warning too
                 continue  # Catches when the final element of an OutputStack is passed but not data
-            elif isinstance(val, (list, UserList)) and any(isinstance(item, NotData) for item in val):
+            elif isinstance(val, (list, UserList)) and \
+                    any(isinstance(item, (NotData, type(NotImplemented))) for item in val):
                 continue  # Catches when multiple elements of an OutputStack are passed but contain missing data
             else:
                 return val
@@ -118,7 +105,7 @@ class OutputChannel(IOChannel):
         if length_change < 0:
             self.value = self.value[-length_change:]
         else:
-            self.value = length_change*[NotData()] + self.value
+            self.value = length_change * [NotData()] + self.value
 
     def push(self, item):
         super(OutputChannel, self).push(item)
@@ -134,7 +121,7 @@ class IO(dict, ABC):
         """Resolve all lazy values and return them in a regular dictionary."""
         resolved_dict = {}
         for k, v in self.items():
-            resolved_dict[k] = ~v
+            resolved_dict[k] = v.resolve()
         return resolved_dict
 
     def __invert__(self):
