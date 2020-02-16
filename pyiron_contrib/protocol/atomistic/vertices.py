@@ -203,6 +203,7 @@ class GradientDescent(Vertex):
         ichan('fix_com', True)
         ichan('masses', None)
         ichan('use_adagrad', False)
+        ichan('output_displacements', False)
 
         ochan = self.output.add_channel
         ochan('positions')
