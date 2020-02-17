@@ -12,15 +12,15 @@ class TestChannel(unittest.TestCase):
 
     def test_channel(self):
         channel = IOChannel(['a'])
-        self.assertTrue(np.all(channel == ['a']))
+        self.assertTrue(np.all(channel.value == ['a']))
         channel.push('b')
-        self.assertTrue(np.all(channel == ['a', 'b']))
+        self.assertTrue(np.all(channel.value == ['a', 'b']))
         channel.append('c')
-        self.assertTrue(np.all(channel == ['a', 'b', 'c']))
+        self.assertTrue(np.all(channel.value == ['a', 'b', 'c']))
         channel += 'd'
-        self.assertTrue(np.all(channel == ['a', 'b', 'c', 'd']))
+        self.assertTrue(np.all(channel.value == ['a', 'b', 'c', 'd']))
         channel[0] = 'z'
-        self.assertTrue(np.all(channel == ['a', 'b', 'c', 'd']))
+        self.assertTrue(np.all(channel.value == ['a', 'b', 'c', 'd']))
 
     def test_input_channel(self):
         self.assertEqual(len(InputChannel()), 0)
