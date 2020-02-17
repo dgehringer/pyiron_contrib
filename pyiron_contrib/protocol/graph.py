@@ -38,9 +38,6 @@ class Vertex(LoggerMixin, ABC):
         self.possible_vertex_states = [self.DEFAULT_STATE]
         self.parent_graph = None
 
-        # Initialize event system
-        self.graph_finished = Event()
-
     @property
     def vertex_state(self):
         return self._vertex_state
@@ -123,6 +120,12 @@ class Graph(Vertex):
         # On initialization, set the active vertex to starting vertex
         self.active_vertex = self.starting_vertex
 
+        # Initialize event system
+        self.graph_finished = Event()
+        self.graph_started = Event()
+        self.vertex_processing = Event()
+        self.vertex_processed = Event()
+
     @abstractmethod
     def set_vertices(self):
         """Add child vertices to the graph."""
@@ -143,6 +146,8 @@ class Graph(Vertex):
         pass
 
     def function(self, *args, **kwargs):
+        self.graph_started.fire()
+
         # Subscribe graph vertices to the protocol_finished Event
         for vertex_name, vertex in self.vertices.items():
             handler_name = '{}_close_handler'.format(vertex_name)
@@ -150,7 +155,9 @@ class Graph(Vertex):
                 self.graph_finished += EventHandler(handler_name, vertex.finish)
 
         while self.active_vertex is not None:
+            self.vertex_processing.fire(self.active_vertex)
             self.active_vertex.execute()
+            self.vertex_processed.fire(self.active_vertex)
             self.step()
         output_data = self.get_output()
         self.graph_finished.fire()
