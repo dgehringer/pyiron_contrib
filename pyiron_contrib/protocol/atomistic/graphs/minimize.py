@@ -109,7 +109,7 @@ class Minimize(Graph):
         v = self.vertices
         return {
             'energy_pot': ~v.calc_static.output.energy_pot[-1],
-            'max_force': ~v.calc_static.forces[-1].norm(axis=-1).max(),
+            'max_force': ~v.calc_static.output.forces[-1].norm(axis=-1).max(),
             'positions': ~v.gradient_descent.output.positions[-1],
             'forces': ~v.calc_static.output.forces[-1]
         }
