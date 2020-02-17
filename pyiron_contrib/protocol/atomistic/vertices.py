@@ -150,11 +150,10 @@ class ExternalHamiltonian(Vertex):
             raise NotImplementedError
         return val
 
-    # def finish(self):
-    #     # TODO: This is actually important, you'll need to add events and finishing back into the graphs...
-    #     super(ExternalHamiltonian, self).finish()
-    #     if self._job is not None:
-    #         self._job.interactive_close()
+    def finish(self):
+        super(ExternalHamiltonian, self).finish()
+        if self._job is not None:
+            self._job.interactive_close()
 
     # def to_hdf(self, hdf=None, group_name=None):
     #     super(ExternalHamiltonian, self).to_hdf(hdf=hdf, group_name=group_name)

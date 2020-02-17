@@ -6,6 +6,7 @@ from __future__ import print_function
 from pyiron_contrib.protocol.utils import LoggerMixin
 from pyiron_contrib.protocol.io import Input, Output
 from abc import ABC, abstractmethod
+from pyiron_contrib.protocol.utils.event import Event, EventHandler
 
 """
 The goal here is to abstract and simplify the graph functionality.
@@ -36,6 +37,9 @@ class Vertex(LoggerMixin, ABC):
         self._vertex_state = self.DEFAULT_STATE
         self.possible_vertex_states = [self.DEFAULT_STATE]
         self.parent_graph = None
+
+        # Initialize event system
+        self.graph_finished = Event()
 
     @property
     def vertex_state(self):
@@ -95,6 +99,9 @@ class Vertex(LoggerMixin, ABC):
     def from_hdf(self, hdf=None, group_name=None):
         pass
 
+    def finish(self):
+        pass
+
 
 class Graph(Vertex):
     def __init__(self, *args, **kwargs):
@@ -136,10 +143,17 @@ class Graph(Vertex):
         pass
 
     def function(self, *args, **kwargs):
+        # Subscribe graph vertices to the protocol_finished Event
+        for vertex_name, vertex in self.vertices.items():
+            handler_name = '{}_close_handler'.format(vertex_name)
+            if not self.graph_finished.has_handler(handler_name):
+                self.graph_finished += EventHandler(handler_name, vertex.finish)
+
         while self.active_vertex is not None:
             self.active_vertex.execute()
             self.step()
         output_data = self.get_output()
+        self.graph_finished.fire()
         return output_data
 
     def step(self):
