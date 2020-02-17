@@ -76,6 +76,9 @@ class InputChannel(IOChannel):
                 return val
         raise RuntimeError("Input stack ran out without finding data.")
 
+    def clear(self):
+        self.value = []
+
 
 class OutputChannel(IOChannel):
     """
