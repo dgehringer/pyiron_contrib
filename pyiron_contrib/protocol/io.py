@@ -6,7 +6,7 @@ from __future__ import print_function
 from collections import UserList
 from pyiron_contrib.protocol.lazy import Lazy, NotData
 from abc import ABC
-from pyiron_contrib.protocol.utils.misc import LoggerMixin
+from pyiron_contrib.utils.logger_mixin import LoggerMixin
 
 """
 Containers for streamlining graph input and output.

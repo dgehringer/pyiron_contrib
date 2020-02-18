@@ -3,7 +3,8 @@
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
 from enum import Enum
-from pyiron_contrib.protocol.utils.misc import  LoggerMixin, requires_arguments
+from pyiron_contrib.protocol.utils.misc import requires_arguments
+from pyiron_contrib.utils.logger_mixin import LoggerMixin
 from types import MethodType, FunctionType
 
 """

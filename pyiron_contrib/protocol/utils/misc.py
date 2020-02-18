@@ -3,7 +3,6 @@ from __future__ import print_function
 # Copyright (c) Max-Planck-Institut für Eisenforschung GmbH - Computational Materials Design (CM) Department
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
-from logging import getLogger
 from inspect import getargspec
 from pydoc import locate
 from itertools import islice
@@ -47,26 +46,6 @@ def ordered_dict_get_last(ordered_dict):
     """
 
     return ordered_dict[next(reversed(ordered_dict))]
-
-
-class LoggerMixin(object):
-    """
-    A class which is meant to be inherited from. Provides a logger attribute. The loggers name is the fully
-    qualified type name of the instance
-    """
-
-    def fullname(self):
-        """
-        Returns the fully qualified type name of the instance
-
-        Returns:
-            str: fully qualified type name of the instance
-        """
-        return '{}.{}'.format(self.__class__.__module__, self.__class__.__name__)
-
-    @property
-    def logger(self):
-        return getLogger(self.fullname())
 
 
 def requires_arguments(func):

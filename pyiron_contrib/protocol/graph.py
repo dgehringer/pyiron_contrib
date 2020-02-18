@@ -3,7 +3,7 @@
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
 from __future__ import print_function
-from pyiron_contrib.protocol.utils import LoggerMixin
+from pyiron_contrib.utils.logger_mixin import LoggerMixin
 from pyiron_contrib.protocol.io import Input, Output
 from abc import ABC, abstractmethod
 from pyiron_contrib.protocol.utils.event import Event, EventHandler

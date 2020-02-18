@@ -5,8 +5,9 @@ from __future__ import print_function
 
 import sys
 from pyiron.base.job.generic import GenericJob
-from pyiron_contrib.protocol.utils import IODictionary, InputDictionary, LoggerMixin, Event, EventHandler, \
+from pyiron_contrib.protocol.utils import IODictionary, InputDictionary, Event, EventHandler, \
     Pointer, CrumbType, ordered_dict_get_last, Comparer, TimelineDict
+from pyiron_contrib.utils.logger_mixin import LoggerMixin
 # from pyiron_contrib.protocol.utils.types import PyironJobTypeRegistry
 from pyiron_contrib.protocol.utils.pptree import print_tree as pptree
 from abc import ABC, abstractmethod

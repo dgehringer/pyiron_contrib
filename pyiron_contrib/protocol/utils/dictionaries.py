@@ -6,7 +6,8 @@ import re
 import numpy as np
 from collections import OrderedDict
 from pyiron_contrib.protocol.utils.pointer import Pointer
-from pyiron_contrib.protocol.utils.misc import  LoggerMixin, fullname
+from pyiron_contrib.protocol.utils.misc import fullname
+from pyiron_contrib.utils.logger_mixin import LoggerMixin
 from pyiron.atomistics.structure.atoms import Atoms
 
 """
