@@ -52,6 +52,38 @@ class IOChannel(Lazy, ABC, LoggerMixin):
     def __len__(self):
         return len(self.value)
 
+    def to_hdf(self, hdf, group_name=None):
+        """
+        Store the Vertex in an HDF5 file.
+
+        Args:
+            hdf (ProjectHDFio): HDF5 group object.
+            group_name (str): HDF5 subgroup name. (Default is None.)
+        """
+        if group_name is not None:
+            hdf5_server = hdf.open(group_name)
+        else:
+            hdf5_server = hdf
+
+        hdf5_server["TYPE"] = str(type(self))
+
+        # TODO: Iterate over channels
+
+    def from_hdf(self, hdf, group_name=None):
+        """
+        Load the Protocol from an HDF5 file.
+
+        Args:
+            hdf (ProjectHDFio): HDF5 group object - optional
+            group_name (str): HDF5 subgroup name - optional
+        """
+        if group_name is not None:
+            hdf5_server = hdf.open(group_name)
+        else:
+            hdf5_server = hdf
+
+        # TODO: Iterate over nodes or whatever. Probably separate load for I and O
+
 
 class InputChannel(IOChannel):
     """A list with an alternative initialization argument and a push method."""
@@ -142,6 +174,39 @@ class IO(dict, ABC):
         for k, v in self.items():
             rep += "\t{}: {}\n".format(k, v.__str__())
         return rep
+
+    def to_hdf(self, hdf, group_name=None):
+        """
+        Store the Vertex in an HDF5 file.
+
+        Args:
+            hdf (ProjectHDFio): HDF5 group object.
+            group_name (str): HDF5 subgroup name. (Default is None.)
+        """
+        if group_name is not None:
+            hdf5_server = hdf.open(group_name)
+        else:
+            hdf5_server = hdf
+
+        hdf5_server["TYPE"] = str(type(self))
+
+        for k, v in self.items():
+            v.to_hdf(hdf5_server, k)
+
+    def from_hdf(self, hdf, group_name=None):
+        """
+        Load the Protocol from an HDF5 file.
+
+        Args:
+            hdf (ProjectHDFio): HDF5 group object - optional
+            group_name (str): HDF5 subgroup name - optional
+        """
+        if group_name is not None:
+            hdf5_server = hdf.open(group_name)
+        else:
+            hdf5_server = hdf
+
+        # TODO: Iterate over nodes or whatever. Probably separate load for I and O
 
 
 class Input(IO):  # UserDict):  I'm having trouble with UserDict, it's .data attribute, and recursion with __setattr__

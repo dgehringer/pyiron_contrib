@@ -90,11 +90,44 @@ class Vertex(LoggerMixin, ABC):
         else:
             return self.parent_graph._get_graph_location(loc=new_loc)
 
-    def to_hdf(self, hdf=None, group_name=None):
-        pass
+    def to_hdf(self, hdf, group_name=None):
+        """
+        Store the Vertex in an HDF5 file.
 
-    def from_hdf(self, hdf=None, group_name=None):
-        pass
+        Args:
+            hdf (ProjectHDFio): HDF5 group object.
+            group_name (str): HDF5 subgroup name. (Default is None.)
+        """
+        if group_name is not None:
+            hdf5_server = hdf.open(group_name)
+        else:
+            hdf5_server = hdf
+
+        hdf5_server["TYPE"] = str(type(self))
+        hdf5_server["possiblevertexstates"] = self.possible_vertex_states
+        hdf5_server["vertexstate"] = self.vertex_state
+        hdf5_server["vertexname"] = self.vertex_name
+        self.input.to_hdf(hdf=hdf5_server, group_name="input")
+        self.output.to_hdf(hdf=hdf5_server, group_name="output")
+
+    def from_hdf(self, hdf, group_name=None):
+        """
+        Load the Vertex from an HDF5 file.
+
+        Args:
+            hdf (ProjectHDFio): HDF5 group object.
+            group_name (str): HDF5 subgroup name. (Default is None.)
+        """
+        if group_name is not None:
+            hdf5_server = hdf.open(group_name)
+        else:
+            hdf5_server = hdf
+
+        self.possible_vertex_states = hdf5_server["possiblevertexstates"]
+        self._vertex_state = hdf5_server["vertexstate"]
+        self.vertex_name = hdf5_server["vertexname"]
+        self.input.from_hdf(hdf=hdf5_server, group_name="input")
+        self.output.from_hdf(hdf=hdf5_server, group_name="output")
 
     def finish(self):
         pass
@@ -116,6 +149,8 @@ class Graph(Vertex):
         self.wire_data_flow()
         if self.starting_vertex is None:
             self.logger.warning("Starting vertex not set for {}".format(self.vertex_name))
+        if self.restarting_vertex is None:
+            self.logger.warning("Restarting vertex not set for {}".format(self.vertex_name))
 
         # On initialization, set the active vertex to starting vertex
         self.active_vertex = self.starting_vertex
@@ -199,6 +234,49 @@ class Graph(Vertex):
         for v in self.vertices.values():
             v.clock = clock
 
+    def to_hdf(self, hdf, group_name=None):
+        """
+        Store the Vertex in an HDF5 file.
+
+        Args:
+            hdf (ProjectHDFio): HDF5 group object.
+            group_name (str): HDF5 subgroup name. (Default is None.)
+        """
+        if group_name is not None:
+            hdf5_server = hdf.open(group_name)
+        else:
+            hdf5_server = hdf
+        hdf5_server["TYPE"] = str(type(self))
+        hdf5_server["startingvertexname"] = self.starting_vertex.name
+        hdf5_server["restartingvertexname"] = self.restarting_vertex.name
+        self.vertices.to_hdf(hdf5_server, "vertices")
+        self.edges.to_hdf(hdf5_server, "edges")
+
+    def from_hdf(self, hdf, group_name=None):
+        """
+        Load the Protocol from an HDF5 file.
+
+        Args:
+            hdf (ProjectHDFio): HDF5 group object - optional
+            group_name (str): HDF5 subgroup name - optional
+        """
+        if group_name is not None:
+            hdf5_server = hdf.open(group_name)
+        else:
+            hdf5_server = hdf
+
+        super(Graph, self).from_hdf(hdf=hdf, group_name=group_name)
+
+        self.vertices.from_hdf(hdf5_server, "vertices")
+        self.edges.from_hdf(hdf5_server, "edges")
+
+        starting_vertex_name = hdf5_server["startingvertexname"]
+        restarting_vertex_name = hdf5_server["restartingvertexname"]
+        self.starting_vertex = self.vertices[starting_vertex_name]
+        self.restarting_vertex = self.vertices[restarting_vertex_name]
+        self.active_vertex = None
+        self.wire_data_flow()  # TODO: Test if this is even necessary
+
 
 class DotDict(dict):
     """A dictionary which allows `.` setting and getting for items."""
@@ -233,6 +311,40 @@ class Vertices(DotDict):
             value.vertex_name = key
             value.parent_graph = self._owner
             super(Vertices, self).__setitem__(key, value)
+
+    def to_hdf(self, hdf, group_name=None):
+        """
+        Store the Vertex in an HDF5 file.
+
+        Args:
+            hdf (ProjectHDFio): HDF5 group object.
+            group_name (str): HDF5 subgroup name. (Default is None.)
+        """
+        if group_name is not None:
+            hdf5_server = hdf.open(group_name)
+        else:
+            hdf5_server = hdf
+
+        hdf5_server["TYPE"] = str(type(self))
+
+        for k, v in self.items():
+            v.to_hdf(hdf5_server, k)
+
+    def from_hdf(self, hdf, group_name=None):
+        """
+        Load the Protocol from an HDF5 file.
+
+        Args:
+            hdf (ProjectHDFio): HDF5 group object - optional
+            group_name (str): HDF5 subgroup name - optional
+        """
+        if group_name is not None:
+            hdf5_server = hdf.open(group_name)
+        else:
+            hdf5_server = hdf
+
+        for k, v in self.items():
+            v.from_hdf(hdf5_server, k)
 
 
 class Edges(DotDict):
@@ -290,3 +402,16 @@ class Edges(DotDict):
                 ))
 
             self[vertex.vertex_name][state] = next_vertex.vertex_name
+
+    def to_hdf(self, hdf, group_name=None):
+        if group_name is not None:
+            hdf5_server = hdf.open(group_name)
+        else:
+            hdf5_server = hdf
+
+        hdf5_server["TYPE"] = str(type(self))
+        for name, edge in self.items():
+            hdf5_server[name] = edge
+
+    def from_hdf(self, hdf, group_name):
+        pass
