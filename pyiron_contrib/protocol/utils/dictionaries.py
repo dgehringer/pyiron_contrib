@@ -6,9 +6,7 @@ import re
 import numpy as np
 from collections import OrderedDict
 from pyiron_contrib.protocol.utils.pointer import Pointer
-from pyiron_contrib.protocol.utils.misc import fullname
-from pyiron_contrib.utils.logger_mixin import LoggerMixin
-from pyiron.atomistics.structure.atoms import Atoms
+from pyiron_contrib.utils.misc import LoggerMixin
 
 """
 Classes to setup input and output dataflows for protocols
@@ -79,176 +77,13 @@ class IODictionary(dict, LoggerMixin):
             resolved[key] = self.__getitem__(key)
         return resolved
 
-    @staticmethod
-    def _try_save_key(k, v, hdf, exclude=(dict, tuple, list)):
-        """
-        Tries to save a simple value
-
-        Args:
-            k: (str) key name of the HDF entry
-            v: (obj) value
-            hdf: the hdf server
-
-        Returns: (bool) wether saving the key was successful or not
-
-        """
-        # try to call to_hdf first
-        if hasattr(v, 'to_hdf'):
-            v.to_hdf(hdf, group_name=k)
-            result = True
-        else:
-            if exclude is not None:
-                if isinstance(v, exclude):
-                    return False
-            try:
-                # try to do it the easy way
-                hdf[k] = v
-                result = True
-            except TypeError:
-                result = False
-        return result
-
     def _generic_to_hdf(self, value, hdf, group_name=None):
-        """
-        Saves also dictionaries and lists to hdf
-        Args:
-            value: (obj) to object to save
-            hdf: the hdf server
-            group_name: (str) the group name where to store it
-        """
-        if isinstance(value, dict):
-            # if we deal with a dictionary we have to open a new group anyway
-            with hdf.open(group_name) as server:
-                # store class metadata
-                server['TYPE'] = str(type(value))
-                server['FULLNAME'] = fullname(value)
-                for k, v in value.items():
-                    # try to save it
-                    if not isinstance(k, str):
-                        # it is possible that the keys are not strings, thus we have to enforce this
-                        self.logger.warning('Key "%s" is not a string, it will be converted to %s' % (k, str(k)))
-                        k = str(k)
-                    # try it the easy way first (either call v.to_hdf or directly save it
-                    if self._try_save_key(k, v, server):
-                        pass  # everything was successful
-                    else:
-                        # well pyiron did not manage lets -> more complex object
-                        self._generic_to_hdf(v, server, group_name=k)
-        elif isinstance(value, (list, tuple)):
-            # check if all do have the same type -> then we can make a numpy array out of it
-            if len(value) == 0:
-                pass  # there is nothing to do, no data to store
-            else:
-                first_type = type(value[0])
-                same = all([type(v) == first_type for v in value])
-                # if all items are of the same type and it is simple
-                if same and issubclass(first_type, (float, complex, int, np.ndarray)):
-                    # that is trivial we do have an array
-                    if issubclass(first_type, np.ndarray):
-                        # we do not want dtype=object, thus we do make this distinction
-                        hdf[group_name] = np.array(value)
-                    else:
-                        hdf[group_name] = np.array(value, dtype=first_type)
-                else:
-                    with hdf.open(group_name) as server:
-                        # again write the metadata
-                        server['TYPE'] = str(type(value))
-                        server['FULLNAME'] = fullname(value)
-                        for i, v in enumerate(value):
-                            index_key = GENERIC_LIST_INDEX_FORMAT.format(index=i)
-                            if self._try_save_key(index_key, v, server):
-                                pass  # everything was successful
-                            else:
-                                self._generic_to_hdf(v, server, group_name=index_key)
-        else:
-            # so this one is the primitive item case
-            # lets check if it has a to_hdf method
-            try:
-                value.to_hdf(hdf, group_name=group_name)
-            except AttributeError:
-                # Ok there is no to_hdf method however lets try it again
-                try:
-                    hdf[group_name] = value
-                except:
-                    # now we have no clue any more, we have to raise this error
-                    raise
+        from pyiron_contrib.utils.hdf import generic_to_hdf
+        return generic_to_hdf(value, hdf, group_name=group_name)
 
     def _generic_from_hdf(self, hdf, group_name=None):
-        """
-        Loads dicts, lists and tuples as well as their subclasses from an hdf file
-
-        Args:
-            hdf: the hdf server
-            group_name: (str) the group name
-
-        Returns: (obj) the object to return
-        """
-
-        # handle special types at first
-        # try a simple load
-        if 'TYPE' not in hdf[group_name].list_nodes():
-            return hdf[group_name]
-        elif hdf[group_name]['TYPE'] == str(IODictionary):
-            iodict = IODictionary()
-            iodict.from_hdf(hdf, group_name)
-            return iodict
-        elif hdf[group_name]['TYPE'] == str(Atoms):
-            struct = Atoms()
-            struct.from_hdf(hdf, group_name)
-            return struct
-        # FULLNAME will only be present if _generic_to_hdf wrote the underlying object
-        elif 'FULLNAME' in hdf[group_name].keys():
-            with hdf.open(group_name) as server:
-                from pydoc import locate
-                # convert the class qualifier to a type
-                cls_ = locate(server['FULLNAME'])
-                # handle a dictionary
-                if issubclass(cls_, dict):
-                    result = {}
-                    # nodes are primitive objects -> that is easy
-                    for k in server.list_nodes():
-                        # skip the special nodes
-                        if k in ('TYPE', 'FULLNAME'):
-                            continue
-                        result[k] = server[k]
-
-                    for k in server.list_groups():
-                        # groups are more difficult, since they're other objects -> give it a try
-                        result[k] = self._generic_from_hdf(server, group_name=k)
-
-                    # create the instance -> we have to assume a constructor of type cls_(**kwargs) for that
-                    # NOTE: if the default constructor is not available this code will break
-                    result = cls_(result)
-                    return result
-                elif issubclass(cls_, (list, tuple)):
-                    result = []
-                    # we have to keep track of the indices -> str.__cmp__ != int.__cmp__ we cannot assume an order
-                    indices = []
-
-                    for k in server.list_nodes():
-                        if k in ('TYPE', 'FULLNAME'):
-                            continue
-                        # nodes are trivial
-                        index = int(k.replace('i_', ''))
-                        result.append(server[k])
-                        indices.append(index)
-                        # TODO: Since Atoms object appear as a node we might have to call it here too
-
-                    for k in server.list_groups():
-                        # we do have the recursive call here
-                        index = int(k.replace('i_', ''))
-                        result.append(self._generic_from_hdf(server, group_name=k))
-                        indices.append(index)
-
-                    # sort it, with the keys as indices
-                    result = sorted(enumerate(result), key=lambda t: indices[t[0]])
-                    # create the instance, and get rid of the instances
-                    result = cls_([val for idx, val in result])
-                    return result
-                else:
-                    raise ImportError('Could not locate type(%s)' % server['FULLNAME'])
-        else:
-            raise TypeError('I do not know how to deserialize type(%s)' % hdf[group_name])
+        from pyiron_contrib.utils.hdf import generic_from_hdf
+        return generic_from_hdf(hdf, group_name=group_name)
 
     def to_hdf(self, hdf, group_name=None):
         with hdf.open(group_name) as hdf5_server:

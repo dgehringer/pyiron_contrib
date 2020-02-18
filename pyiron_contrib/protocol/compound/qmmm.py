@@ -5,10 +5,10 @@
 from __future__ import print_function
 
 from pyiron_contrib.protocol.generic import PrimitiveVertex, CompoundVertex, Protocol
-from pyiron_contrib.protocol.utils import ensure_iterable
+from pyiron_contrib.protocol.utils import ensure_iterable, IODictionary
 from pyiron_contrib.protocol.primitive.one_state import ExternalHamiltonian, Counter, Norm, Max, GradientDescent
 from pyiron_contrib.protocol.primitive.two_state import IsGEq, IsLEq
-from pyiron_contrib.protocol.utils import Pointer, IODictionary
+from pyiron_contrib.protocol.utils import Pointer
 import numpy as np
 
 """

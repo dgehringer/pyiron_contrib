@@ -68,19 +68,6 @@ def requires_arguments(func):
 
 flatten = lambda l: [item for sublist in l for item in sublist]
 
-def fullname(obj):
-    """
-    Returns the fully qualified class name of an object
-
-    Args:
-        obj: (object) the object
-
-    Returns: (str) the class name
-
-    """
-    obj_type = type(obj)
-    return '{}.{}'.format(obj_type.__module__, obj_type.__name__)
-
 
 def get_cls(string):
     return locate([v for v in re.findall(r'(?!\.)[\w\.]+(?!\.)', string)if v != 'class'][0])

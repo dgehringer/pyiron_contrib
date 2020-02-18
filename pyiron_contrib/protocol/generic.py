@@ -5,9 +5,9 @@ from __future__ import print_function
 
 import sys
 from pyiron.base.job.generic import GenericJob
-from pyiron_contrib.protocol.utils import IODictionary, InputDictionary, Event, EventHandler, \
-    Pointer, CrumbType, ordered_dict_get_last, Comparer, TimelineDict
-from pyiron_contrib.utils.logger_mixin import LoggerMixin
+from pyiron_contrib.protocol.utils import InputDictionary, Event, EventHandler, \
+    Pointer, CrumbType, ordered_dict_get_last, Comparer, TimelineDict, IODictionary
+from pyiron_contrib.utils.misc import LoggerMixin
 # from pyiron_contrib.protocol.utils.types import PyironJobTypeRegistry
 from pyiron_contrib.protocol.utils.pptree import print_tree as pptree
 from abc import ABC, abstractmethod
@@ -38,8 +38,8 @@ class Vertex(LoggerMixin, ABC):
     Attributes:
         input (InputDictionary): A pointer-capable dictionary for inputs, including a sub-dictionary for defaults.
             (Default is a clean dictionary.)
-        output (IODictionary): A pointer-capable dictionary for outputs. (Default is a clean dictionary.)
-        archive (IODictionary): A pointer-capable dictionary for sampling the history of inputs and outputs. (Default
+        output (pyiron_contrib.protocol.utils.IODictionary): A pointer-capable dictionary for outputs. (Default is a clean dictionary.)
+        archive (pyiron_contrib.protocol.utils.IODictionary): A pointer-capable dictionary for sampling the history of inputs and outputs. (Default
             is a clean dictionary.)
         vertex_state (str): Which edge to follow out of this vertex. (Default is "next".)
         possible_vertex_states (list[str]): Allowable exiting edge names. (Default is ["next"], one edge only!)

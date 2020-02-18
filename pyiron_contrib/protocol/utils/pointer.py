@@ -4,7 +4,7 @@
 
 from enum import Enum
 from pyiron_contrib.protocol.utils.misc import requires_arguments
-from pyiron_contrib.utils.logger_mixin import LoggerMixin
+from pyiron_contrib.utils.misc import LoggerMixin
 from types import MethodType, FunctionType
 
 """

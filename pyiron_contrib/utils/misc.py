@@ -19,3 +19,17 @@ class LoggerMixin(object):
     @property
     def logger(self):
         return getLogger(self.fullname())
+
+
+def fullname(obj):
+    """
+    Returns the fully qualified class name of an object
+
+    Args:
+        obj: (object) the object
+
+    Returns: (str) the class name
+
+    """
+    obj_type = type(obj)
+    return '{}.{}'.format(obj_type.__module__, obj_type.__name__)

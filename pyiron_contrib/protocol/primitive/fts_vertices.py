@@ -4,14 +4,13 @@
 
 from __future__ import print_function
 from pyiron_contrib.protocol.generic import PrimitiveVertex
-from pyiron_contrib.protocol.utils import IODictionary
 import numpy as np
 from pyiron.atomistics.job.interactive import GenericInteractive
 from pyiron.lammps.lammps import LammpsInteractive
 from scipy.constants import physical_constants
 from ase.geometry import find_mic, get_distances  # TODO: Wrap things using pyiron functionality
 from pyiron import Project
-from pyiron_contrib.protocol.utils import ensure_iterable
+from pyiron_contrib.protocol.utils import ensure_iterable, IODictionary
 from os.path import split
 from abc import ABC, abstractmethod
 from scipy.linalg import toeplitz
