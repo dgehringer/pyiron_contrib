@@ -115,7 +115,7 @@ class Graph(Vertex):
         self.set_edges()
         self.wire_data_flow()
         if self.starting_vertex is None:
-            self.logger.warn("Starting vertex not set for {}".format(self.vertex_name))
+            self.logger.warning("Starting vertex not set for {}".format(self.vertex_name))
 
         # On initialization, set the active vertex to starting vertex
         self.active_vertex = self.starting_vertex
@@ -188,7 +188,7 @@ class Graph(Vertex):
                 self.vertex_name, self.active_vertex.vertex_name))
 
         if self.restarting_vertex is None:
-            self.logger.warn("Reseting graph {} but found no restarting vertex.".format(self.vertex_name))
+            self.logger.warning("Reseting graph {} but found no restarting vertex.".format(self.vertex_name))
 
         self.active_vertex = self.restarting_vertex
 

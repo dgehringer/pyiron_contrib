@@ -781,7 +781,7 @@ class Graph(dict, LoggerMixin):
                 if len(parents) == 0:
                     raise TypeError('I do not know how to visualize "{}"'.format(type_.__name__))
                 elif len(parents) > 1:
-                    self.logger.warn('More than one parent class found for type "{}"'.format(type_.__name__))
+                    self.logger.warning('More than one parent class found for type "{}"'.format(type_.__name__))
                 return parents[0]
 
         for vertex_name, vertex in self.vertices.items():

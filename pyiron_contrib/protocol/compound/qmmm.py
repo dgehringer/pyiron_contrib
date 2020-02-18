@@ -522,7 +522,7 @@ class PartitionStructure(PrimitiveVertex):
             bb[:, 1] -= shrinkage
         elif any([0.9 < box_size / cell_size < 1.0 for box_size, cell_size in zip(bs, supercell_lengths)]):
             # Check if the box is just slightly smaller than the superstructure cell
-            self.logger.warn(
+            self.logger.warning(
                 'Your cell is nearly as large as your supercell. Probably you want to expand it a little bit')
 
         qm_structure.cell = np.identity(3) * np.ptp(bb, axis=1)
