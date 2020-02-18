@@ -6,6 +6,8 @@ from __future__ import print_function
 from collections import UserDict
 from numpy.linalg import norm as nplanorm
 
+from pyiron_contrib.protocol.io import NotData
+
 """
 To wire graphs before evaluating them, we will need a data type which is extremely lazy.
 """
@@ -60,24 +62,7 @@ def _lazy_augmenting_magic(magic_name, cls):
     return _lazy_magic(magic_name, cls, expiring=True)
 
 
-def _not_data_magic(magic_name, cls):
-    """
-    A replacement for magic methods for the `NotData` class.
-
-    Args:
-        magic_name (str): The name of the python magic method being replaced.
-        cls (Lazy): The class to decorate. It had better be `Lazy`.
-
-    Returns:
-        (fnc): A new function which just returns self.
-    """
-
-    def fn(self, *args, **kwargs):
-        return self
-    return fn
-
-
-_base_names = [
+BASE_MAGIC_NAMES = [
     '__getitem__',
     '__pos__', '__neg__', '__abs__', '__round__', '__floor__', '__ceil__', '__trunc__',
     '__eq__', '__ne__', '__lt__', '__gt__', '__le__', '__ge__',
@@ -87,7 +72,7 @@ _base_names = [
     '__rlshift__', '__rrshift__', '__rand__', '__ror__', '__rxor__',
     '__call__'
 ]
-_augmenting_names = [
+AUGMENTING_MAGIC_NAMES = [
     '__iadd__', '__isub__', '__imul__', '__ifloordiv__', '__itruediv__', '__imod__', '__idivmod__', '__ipow__',
     '__ilshift__', '__irshift__', '__iand__', '__ior__', '__ixor__',
 ]
@@ -121,8 +106,8 @@ def _override_methods(replacement, names):
     return decorate
 
 
-@_override_methods(_lazy_base_magic, _base_names)
-@_override_methods(_lazy_augmenting_magic, _augmenting_names)
+@_override_methods(_lazy_base_magic, BASE_MAGIC_NAMES)
+@_override_methods(_lazy_augmenting_magic, AUGMENTING_MAGIC_NAMES)
 class Lazy:
     """
     A class which defers evaluation until its `.resolve` method is called, or it is prepended with a `~`.
@@ -265,22 +250,3 @@ class PatientDict(UserDict):
         self.__getitem__(item)
 
 
-@_override_methods(_not_data_magic, _base_names)
-@_override_methods(_not_data_magic, _augmenting_names)
-class NotData(object):
-    """A datatype to indicate that an input stack really doesn't have data (since `None` might be valid input!)"""
-
-    def __repr__(self):
-        return "<NotData>"
-
-    def __str__(self):
-        return "notdata"
-
-    def __getattribute__(self, item):
-        try:
-            return super(NotData, self).__getattribute__(item)
-        except AttributeError:
-            return self
-
-    def __getattr__(self, item):
-        return self

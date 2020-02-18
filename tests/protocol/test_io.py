@@ -3,8 +3,8 @@
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
 import unittest
-from pyiron_contrib.protocol.lazy import Lazy, NotData
-from pyiron_contrib.protocol.io import IOChannel, InputChannel, OutputChannel, Input, Output
+from pyiron_contrib.protocol.lazy import Lazy
+from pyiron_contrib.protocol.io import IOChannel, InputChannel, OutputChannel, Input, Output, NotData
 import numpy as np
 
 
@@ -104,3 +104,7 @@ class TestOutput(unittest.TestCase):
         }
         for k, v in output.resolve().items():
             self.assertTrue(all(vi == ref for vi, ref in zip(v, ref_dict[k])))
+
+
+class TestNotData(unittest.TestCase):
+    pass
