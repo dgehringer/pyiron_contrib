@@ -191,14 +191,6 @@ class IO(dict, ABC):
             rep += "\t{}: {}\n".format(k, v.__str__())
         return rep
 
-    @abstractmethod
-    def __setitem__(self, key, item):
-        pass
-
-    @abstractmethod
-    def add_channel(self, channel_name, **kwargs):
-        pass
-
     def to_hdf(self, hdf, group_name=None):
         """
         Store the Vertex in an HDF5 file.
