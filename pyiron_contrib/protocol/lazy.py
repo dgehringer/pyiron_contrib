@@ -6,8 +6,6 @@ from __future__ import print_function
 from collections import UserDict
 from numpy.linalg import norm as nplanorm
 
-from pyiron_contrib.protocol.io import NotData
-
 """
 To wire graphs before evaluating them, we will need a data type which is extremely lazy.
 """
@@ -250,3 +248,41 @@ class PatientDict(UserDict):
         self.__getitem__(item)
 
 
+def _not_data_magic(magic_name, cls):
+    """
+    A replacement for magic methods for the `NotData` class. Just returns the same instance of `NotData`.
+
+    Args:
+        magic_name (str): The name of the python magic method being replaced.
+        cls (Lazy): The class to decorate. It had better be `Lazy`.
+
+    Returns:
+        (fnc): A new function which just returns self.
+    """
+    def fn(self, *args, **kwargs):
+        return self
+    return fn
+
+
+@_override_methods(_not_data_magic, BASE_MAGIC_NAMES)
+@_override_methods(_not_data_magic, AUGMENTING_MAGIC_NAMES)
+class NotData(object):
+    """
+    A datatype to indicate that an input stack really doesn't have data (since `None` might be valid input!) Most magic
+    methods are overwritten so that a `NotData` instance stays `NotData` after maniplulation.
+    """
+
+    def __repr__(self):
+        return "<NotData>"
+
+    def __str__(self):
+        return "notdata"
+
+    def __getattribute__(self, item):
+        try:
+            return super(NotData, self).__getattribute__(item)
+        except AttributeError:
+            return self
+
+    def __getattr__(self, item):
+        return self
