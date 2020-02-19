@@ -8,6 +8,7 @@ from pyiron_contrib.protocol.io import Input, Output
 from abc import ABC, abstractmethod
 from pyiron_contrib.protocol.utils.event import Event, EventHandler
 from pyiron_contrib.utils.hdf import generic_to_hdf, open_if_group
+from pyiron_contrib.protocol.lazy import Lazy
 
 """
 The goal here is to abstract and simplify the graph functionality.
@@ -32,8 +33,13 @@ class Vertex(LoggerMixin, ABC):
 
         self.input = Input()
         self.output = Output()
+        self.archive = Output()
         self.init_io_channels()
         self.clock = 0
+        self.archive_period = 3
+        self.archive_length = 3
+        self.archive = DotDict()
+        self.archive.output = DotDict()
         self.vertex_name = vertex_name
         self._vertex_state = self.DEFAULT_STATE
         self.possible_vertex_states = [self.DEFAULT_STATE]
@@ -75,11 +81,29 @@ class Vertex(LoggerMixin, ABC):
     def update_and_archive(self, output_data):
         for key, value in output_data.items():
             getattr(self.output, key).push(value)
+        self._archive()
 
-        self._update_archive()
+    def _archive(self):
+        clock = self._resolve_if_lazy(self.clock)
+        period = self._resolve_if_lazy(self.archive_period)
+        length = self._resolve_if_lazy(self.archive_length)
 
-    def _update_archive(self):
-        pass
+        if clock % period == 0:
+            for k, v in self.output.items():
+                try:
+                    self.archive[k] += [v.resolve()]
+                except KeyError:
+                    self.archive[k] = [v.resolve()]
+
+        if len(self.archive[k]) == length:
+            pass  # Flush to hdf
+            self.archive[k] = []
+
+    def _resolve_if_lazy(self, value):
+        if isinstance(value, Lazy):
+            return value.resolve()
+        else:
+            return value
 
     def get_graph_location(self):
         return self._get_graph_location()[:-1]  # Cut the trailing underscore
