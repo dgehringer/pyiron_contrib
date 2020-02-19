@@ -262,7 +262,7 @@ class Graph(Vertex):
         self.starting_vertex = self.vertices[starting_vertex_name]
         self.restarting_vertex = self.vertices[restarting_vertex_name]
         self.active_vertex = None
-        self.wire_data_flow()  # TODO: Test if this is even necessary
+        self.wire_data_flow()
 
 
 class DotDict(dict):
