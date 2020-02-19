@@ -130,22 +130,24 @@ class Graph(Vertex):
     def __init__(self, *args, **kwargs):
         super(Graph, self).__init__(*args, **kwargs)
 
+        # Declare attributes
         self.vertices = Vertices(self)
         self.edges = Edges()
         self.starting_vertex = None
         self.restarting_vertex = None
+        self.active_vertex = None
 
         # Set up the graph
         self.set_vertices()
         self._initialize_edges()
         self.set_edges()
         self.wire_data_flow()
+
+        # Prepare active vertex
         if self.starting_vertex is None:
             self.logger.warning("Starting vertex not set for {}".format(self.vertex_name))
         if self.restarting_vertex is None:
             self.logger.warning("Restarting vertex not set for {}".format(self.vertex_name))
-
-        # On initialization, set the active vertex to starting vertex
         self.active_vertex = self.starting_vertex
 
         # Initialize event system
@@ -176,11 +178,7 @@ class Graph(Vertex):
     def function(self, *args, **kwargs):
         self.graph_started.fire()
 
-        # Subscribe graph vertices to the protocol_finished Event
-        for vertex_name, vertex in self.vertices.items():
-            handler_name = '{}_close_handler'.format(vertex_name)
-            if not self.graph_finished.has_handler(handler_name):
-                self.graph_finished += EventHandler(handler_name, vertex.finish)
+        self.subscribe_all_vertices_to_event(self.graph_finished)
 
         while self.active_vertex is not None:
             self.vertex_processing.fire(self.active_vertex)
@@ -191,6 +189,12 @@ class Graph(Vertex):
         self.graph_finished.fire()
         return output_data
 
+    def subscribe_all_vertices_to_event(self, event):
+        for vertex_name, vertex in self.vertices.items():
+            handler_name = '{}_close_handler'.format(vertex_name)
+            if not event.has_handler(handler_name):
+                event += EventHandler(handler_name, vertex.finish)
+
     def step(self):
         """
         Follows the edge out of the active vertex to get the name of the next vertex and set it as the active vertex.
@@ -199,11 +203,10 @@ class Graph(Vertex):
         vertex = self.active_vertex
         if vertex is not None:
             next_vertex_name = self.edges[vertex.vertex_name][vertex.vertex_state]
-
-            if next_vertex_name is None:
-                self.active_vertex = None
-            else:
+            try:
                 self.active_vertex = self.vertices[next_vertex_name]
+            except KeyError:
+                self.active_vertex = None
 
     @abstractmethod
     def get_output(self):
@@ -277,6 +280,11 @@ class DotDict(dict):
         except KeyError:
             raise AttributeError("{} is neither an attribute nor an item".format(item))
 
+    def _only_allow_vertex(self, value):
+        if not isinstance(value, Vertex):
+            raise TypeError("{} expected a Vertex object but got {}".format(
+                self.__class__.__name__, type(value)))
+
 
 class Vertices(DotDict):
     """
@@ -292,15 +300,17 @@ class Vertices(DotDict):
         super(Vertices, self).__init__()
         self._owner = owner
 
-    def __setitem__(self, key, value):
+    def __setattr__(self, key, value):
         if key == '_owner' and isinstance(value, Graph):
             super(DotDict, self).__setattr__(key, value)
         else:
-            if not isinstance(value, Vertex):
-                raise TypeError("Vertices can only contain Vertex objects but got {}".format(type(value)))
-            value.vertex_name = key
-            value.parent_graph = self._owner
-            super(Vertices, self).__setitem__(key, value)
+            super(Vertices, self).__setattr__(key, value)
+
+    def __setitem__(self, key, value):
+        self._only_allow_vertex(value)
+        value.vertex_name = key
+        value.parent_graph = self._owner
+        super(Vertices, self).__setitem__(key, value)
 
     def to_hdf(self, hdf, group_name=None):
         """
@@ -345,9 +355,7 @@ class Edges(DotDict):
 
     def __setitem__(self, key, value):
         """Set vertex as a dead end -- all states lead to `None`."""
-
-        if not isinstance(value, Vertex):
-            raise TypeError("Edges can only be established for Vertex objects but got {}".format(type(value)))
+        self._only_allow_vertex(value)
         if key != value.vertex_name:
             raise ValueError("Edge dictionaries must have the same name as the vertex they are for. Expected {}"
                              "but got {}".format(value.vertex_name, key))
@@ -384,7 +392,7 @@ class Edges(DotDict):
                 ))
 
             if state not in vertex.possible_vertex_states:
-                raise KeyError("Got state {} which is not in {} for vertex {}".format(
+                raise KeyError("Got state {} which is not in possible states {} for vertex {}".format(
                     state, vertex.possible_vertex_states, vertex.vertex_name
                 ))
 
