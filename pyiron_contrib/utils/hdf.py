@@ -29,6 +29,24 @@ GENERIC_LIST_INDEX_FORMAT = 'i_{index}'
 KNOWN_COMPLEX_TYPES = {str(cls): cls for cls in [Atoms, IODictionary, InputDictionary]}
 
 
+def open_if_group(hdf, group_name):
+    """
+    A shortcut for handling whether or not the group is `None`.
+
+    Args:
+        hdf (ProjectHDFio): HDF5 group object.
+        group_name (str): HDF5 subgroup name. (Default is None)
+
+    Returns:
+        (ProjectHDFio): The original hdf if the group is none, otherwise a newly opened hdf.
+    """
+    if group_name is not None:
+        hdf5_server = hdf.open(group_name)
+    else:
+        hdf5_server = hdf
+    return hdf5_server
+
+
 def _try_save_key(k, v, hdf, exclude=(dict, tuple, list)):
     """
     Tries to save a simple value

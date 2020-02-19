@@ -7,7 +7,7 @@ from collections import UserList
 from pyiron_contrib.protocol.lazy import Lazy, NotData
 from abc import ABC, abstractmethod
 from pyiron_contrib.utils.misc import LoggerMixin
-from pyiron_contrib.utils.hdf import generic_to_hdf, generic_from_hdf
+from pyiron_contrib.utils.hdf import generic_to_hdf, generic_from_hdf, open_if_group
 
 """
 Classes for input and output of vertices.
@@ -101,17 +101,13 @@ class InputChannel(IOChannel):
             hdf (ProjectHDFio): HDF5 group object.
             group_name (str): HDF5 subgroup name. (Default is None.)
         """
-        if group_name is not None:
-            hdf5_server = hdf.open(group_name)
-        else:
-            hdf5_server = hdf
-
+        hdf5_server = open_if_group(hdf, group_name)
         hdf5_server["TYPE"] = str(type(self))
         try:
             val = self.resolve()
         except RuntimeError:
             val = NotData()
-        generic_to_hdf(val, hdf5_server, group_name='resolution')
+        generic_to_hdf(val, hdf5_server, group_name="resolution")
 
     def from_hdf(self, hdf, group_name=None):
         """
@@ -121,12 +117,8 @@ class InputChannel(IOChannel):
             hdf (ProjectHDFio): HDF5 group object.
             group_name (str): HDF5 subgroup name. (Default is None.)
         """
-        if group_name is not None:
-            hdf5_server = hdf.open(group_name)
-        else:
-            hdf5_server = hdf
-
-        value = generic_from_hdf(hdf5_server, 'resolution')
+        hdf5_server = open_if_group(hdf, group_name)
+        value = generic_from_hdf(hdf5_server, "resolution")
         if not isinstance(value, NotData):
             self.push(value)
 
@@ -175,11 +167,7 @@ class OutputChannel(IOChannel):
             hdf (ProjectHDFio): HDF5 group object.
             group_name (str): HDF5 subgroup name. (Default is None.)
         """
-        if group_name is not None:
-            hdf5_server = hdf.open(group_name)
-        else:
-            hdf5_server = hdf
-
+        hdf5_server = open_if_group(hdf, group_name)
         hdf5_server["TYPE"] = str(type(self))
         hdf5_server["bufferlength"] = self.buffer_length
         generic_to_hdf(self.resolve(), hdf5_server, group_name='value')
@@ -192,11 +180,7 @@ class OutputChannel(IOChannel):
             hdf (ProjectHDFio): HDF5 group object.
             group_name (str): HDF5 subgroup name. (Default is None.)
         """
-        if group_name is not None:
-            hdf5_server = hdf.open(group_name)
-        else:
-            hdf5_server = hdf
-
+        hdf5_server = open_if_group(hdf, group_name)
         self.buffer_length = hdf5_server['bufferlength']
         value = generic_from_hdf(hdf5_server, 'value')
         for v in value[::-1]:
@@ -238,19 +222,14 @@ class IO(dict, ABC):
 
     def to_hdf(self, hdf, group_name=None):
         """
-        Store the Vertex in an HDF5 file.
+        Store the each channel in an HDF5 file.
 
         Args:
             hdf (ProjectHDFio): HDF5 group object.
             group_name (str): HDF5 subgroup name. (Default is None.)
         """
-        if group_name is not None:
-            hdf5_server = hdf.open(group_name)
-        else:
-            hdf5_server = hdf
-
+        hdf5_server = open_if_group(hdf, group_name)
         hdf5_server["TYPE"] = str(type(self))
-
         for k, v in self.items():
             v.to_hdf(hdf5_server, k)
 
@@ -262,11 +241,7 @@ class IO(dict, ABC):
             hdf (ProjectHDFio): HDF5 group object.
             group_name (str): HDF5 subgroup name. (Default is None)
         """
-        if group_name is not None:
-            hdf5_server = hdf.open(group_name)
-        else:
-            hdf5_server = hdf
-
+        hdf5_server = open_if_group(hdf, group_name)
         for k in hdf5_server.list_groups():
             v = cls()
             v.from_hdf(hdf5_server, group_name=k)

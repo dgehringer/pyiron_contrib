@@ -7,7 +7,7 @@ from pyiron_contrib.utils.misc import LoggerMixin
 from pyiron_contrib.protocol.io import Input, Output
 from abc import ABC, abstractmethod
 from pyiron_contrib.protocol.utils.event import Event, EventHandler
-from pyiron_contrib.utils.hdf import generic_to_hdf
+from pyiron_contrib.utils.hdf import generic_to_hdf, open_if_group
 
 """
 The goal here is to abstract and simplify the graph functionality.
@@ -99,11 +99,7 @@ class Vertex(LoggerMixin, ABC):
             hdf (ProjectHDFio): HDF5 group object.
             group_name (str): HDF5 subgroup name. (Default is None.)
         """
-        if group_name is not None:
-            hdf5_server = hdf.open(group_name)
-        else:
-            hdf5_server = hdf
-
+        hdf5_server = open_if_group(hdf, group_name)
         hdf5_server["TYPE"] = str(type(self))
         hdf5_server["possiblevertexstates"] = self.possible_vertex_states
         hdf5_server["vertexstate"] = self.vertex_state
@@ -119,11 +115,7 @@ class Vertex(LoggerMixin, ABC):
             hdf (ProjectHDFio): HDF5 group object.
             group_name (str): HDF5 subgroup name. (Default is None.)
         """
-        if group_name is not None:
-            hdf5_server = hdf.open(group_name)
-        else:
-            hdf5_server = hdf
-
+        hdf5_server = open_if_group(hdf, group_name)
         self.possible_vertex_states = hdf5_server["possiblevertexstates"]
         self._vertex_state = hdf5_server["vertexstate"]
         self.vertex_name = hdf5_server["vertexname"]
@@ -244,10 +236,7 @@ class Graph(Vertex):
             group_name (str): HDF5 subgroup name. (Default is None.)
         """
         super(Graph, self).to_hdf(hdf, group_name=group_name)
-        if group_name is not None:
-            hdf5_server = hdf.open(group_name)
-        else:
-            hdf5_server = hdf
+        hdf5_server = open_if_group(hdf, group_name)
         hdf5_server["TYPE"] = str(type(self))
         hdf5_server["startingvertexname"] = self.starting_vertex.vertex_name
         hdf5_server["restartingvertexname"] = self.restarting_vertex.vertex_name
@@ -263,10 +252,7 @@ class Graph(Vertex):
             group_name (str): HDF5 subgroup name - optional
         """
         super(Graph, self).from_hdf(hdf=hdf, group_name=group_name)
-        if group_name is not None:
-            hdf5_server = hdf.open(group_name)
-        else:
-            hdf5_server = hdf
+        hdf5_server = open_if_group(hdf, group_name)
 
         self.vertices.from_hdf(hdf5_server, "vertices")
         self.edges.from_hdf(hdf5_server, "edges")
@@ -318,17 +304,13 @@ class Vertices(DotDict):
 
     def to_hdf(self, hdf, group_name=None):
         """
-        Send each vertex to HDF.
+        Save each vertex to HDF.
 
         Args:
             hdf (ProjectHDFio): HDF5 group object.
             group_name (str): HDF5 subgroup name. (Default is None.)
         """
-        if group_name is not None:
-            hdf5_server = hdf.open(group_name)
-        else:
-            hdf5_server = hdf
-
+        hdf5_server = open_if_group(hdf, group_name)
         hdf5_server["TYPE"] = str(type(self))
 
         for k, v in self.items():
@@ -344,11 +326,7 @@ class Vertices(DotDict):
             hdf (ProjectHDFio): HDF5 group object.
             group_name (str): HDF5 subgroup name. (Default is None.)
         """
-        if group_name is not None:
-            hdf5_server = hdf.open(group_name)
-        else:
-            hdf5_server = hdf
-
+        hdf5_server = open_if_group(hdf, group_name)
         for k, v in self.items():
             v.from_hdf(hdf5_server, k)
 
@@ -420,14 +398,10 @@ class Edges(DotDict):
             hdf (ProjectHDFio): HDF5 group object.
             group_name (str): HDF5 subgroup name. (Default is None.)
         """
-        if group_name is not None:
-            hdf5_server = hdf.open(group_name)
-        else:
-            hdf5_server = hdf
-
+        hdf5_server = open_if_group(hdf, group_name)
         hdf5_server["TYPE"] = str(type(self))
         for name, edge in self.items():
-            generic_to_hdf(edge, hdf5_server, group_name=name)
+            generic_to_hdf(edge, hdf5_server, group_name=name)  # Edges are dictionaries, so use generic saver
 
     def from_hdf(self, hdf, group_name):
         """
