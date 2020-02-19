@@ -7,6 +7,7 @@ from collections import UserList
 from pyiron_contrib.protocol.lazy import Lazy, NotData
 from abc import ABC, abstractmethod
 from pyiron_contrib.utils.misc import LoggerMixin
+from pyiron_contrib.utils.hdf import generic_to_hdf, generic_from_hdf
 
 """
 Classes for input and output of vertices.
@@ -58,38 +59,6 @@ class IOChannel(Lazy, ABC, LoggerMixin):
     def __len__(self):
         return len(self.value)
 
-    def to_hdf(self, hdf, group_name=None):
-        """
-        Store the Vertex in an HDF5 file.
-
-        Args:
-            hdf (ProjectHDFio): HDF5 group object.
-            group_name (str): HDF5 subgroup name. (Default is None.)
-        """
-        if group_name is not None:
-            hdf5_server = hdf.open(group_name)
-        else:
-            hdf5_server = hdf
-
-        hdf5_server["TYPE"] = str(type(self))
-
-        # TODO: Iterate over channels
-
-    def from_hdf(self, hdf, group_name=None):
-        """
-        Load the Protocol from an HDF5 file.
-
-        Args:
-            hdf (ProjectHDFio): HDF5 group object - optional
-            group_name (str): HDF5 subgroup name - optional
-        """
-        if group_name is not None:
-            hdf5_server = hdf.open(group_name)
-        else:
-            hdf5_server = hdf
-
-        # TODO: Iterate over nodes or whatever. Probably separate load for I and O
-
 
 class InputChannel(IOChannel):
     """
@@ -119,6 +88,47 @@ class InputChannel(IOChannel):
 
     def clear(self):
         self.value = []
+
+    def from_hdf(self, hdf, group_name=None):
+        print("Input channel from hdf {}/{}".format(hdf, group_name))
+        super(InputChannel, self).from_hdf(hdf, group_name)
+
+    def to_hdf(self, hdf, group_name=None):
+        """
+        Store the channel in an HDF5 file.
+
+        Args:
+            hdf (ProjectHDFio): HDF5 group object.
+            group_name (str): HDF5 subgroup name. (Default is None.)
+        """
+        if group_name is not None:
+            hdf5_server = hdf.open(group_name)
+        else:
+            hdf5_server = hdf
+
+        hdf5_server["TYPE"] = str(type(self))
+        try:
+            val = self.resolve()
+        except RuntimeError:
+            val = NotData()
+        generic_to_hdf(val, hdf5_server, group_name='resolution')
+
+    def from_hdf(self, hdf, group_name=None):
+        """
+        Load the channel from an HDF5 file.
+
+        Args:
+            hdf (ProjectHDFio): HDF5 group object.
+            group_name (str): HDF5 subgroup name. (Default is None.)
+        """
+        if group_name is not None:
+            hdf5_server = hdf.open(group_name)
+        else:
+            hdf5_server = hdf
+
+        value = generic_from_hdf(hdf5_server, 'resolution')
+        if not isinstance(value, NotData):
+            self.push(value)
 
 
 class OutputChannel(IOChannel):
@@ -156,6 +166,41 @@ class OutputChannel(IOChannel):
     def push(self, item):
         super(OutputChannel, self).push(item)
         self.value = self.value[1:]
+
+    def to_hdf(self, hdf, group_name=None):
+        """
+        Store the channel in an HDF5 file.
+
+        Args:
+            hdf (ProjectHDFio): HDF5 group object.
+            group_name (str): HDF5 subgroup name. (Default is None.)
+        """
+        if group_name is not None:
+            hdf5_server = hdf.open(group_name)
+        else:
+            hdf5_server = hdf
+
+        hdf5_server["TYPE"] = str(type(self))
+        hdf5_server["bufferlength"] = self.buffer_length
+        generic_to_hdf(self.resolve(), hdf5_server, group_name='value')
+
+    def from_hdf(self, hdf, group_name=None):
+        """
+        Load the channel from an HDF5 file.
+
+        Args:
+            hdf (ProjectHDFio): HDF5 group object.
+            group_name (str): HDF5 subgroup name. (Default is None.)
+        """
+        if group_name is not None:
+            hdf5_server = hdf.open(group_name)
+        else:
+            hdf5_server = hdf
+
+        self.buffer_length = hdf5_server['bufferlength']
+        value = generic_from_hdf(hdf5_server, 'value')
+        for v in value[::-1]:
+            self.push(v)
 
 
 class IO(dict, ABC):
@@ -209,20 +254,23 @@ class IO(dict, ABC):
         for k, v in self.items():
             v.to_hdf(hdf5_server, k)
 
-    def from_hdf(self, hdf, group_name=None):
+    def _from_hdf_pattern(self, hdf, group_name=None, cls=None):
         """
-        Load the Protocol from an HDF5 file.
+        Load the all channels from an HDF5 file.
 
         Args:
-            hdf (ProjectHDFio): HDF5 group object - optional
-            group_name (str): HDF5 subgroup name - optional
+            hdf (ProjectHDFio): HDF5 group object.
+            group_name (str): HDF5 subgroup name. (Default is None)
         """
         if group_name is not None:
             hdf5_server = hdf.open(group_name)
         else:
             hdf5_server = hdf
 
-        # TODO: Iterate over nodes or whatever. Probably separate load for I and O
+        for k in hdf5_server.list_groups():
+            v = cls()
+            v.from_hdf(hdf5_server, group_name=k)
+            self[k] = v
 
 
 class Input(IO):  # UserDict):  I'm having trouble with UserDict, it's .data attribute, and recursion with __setattr__
@@ -243,6 +291,16 @@ class Input(IO):  # UserDict):  I'm having trouble with UserDict, it's .data att
     def add_channel(self, channel_name, default=None):
         self.__setitem__(channel_name, InputChannel(default=default))
 
+    def from_hdf(self, hdf, group_name=None):
+        """
+        Load the all input channels from an HDF5 file.
+
+        Args:
+            hdf (ProjectHDFio): HDF5 group object.
+            group_name (str): HDF5 subgroup name. (Default is None)
+        """
+        self._from_hdf_pattern(hdf, group_name=group_name, cls=InputChannel)
+
 
 class Output(IO):
     """
@@ -258,3 +316,13 @@ class Output(IO):
 
     def add_channel(self, channel_name, buffer_length=1):
         super(Output, self).__setitem__(channel_name, OutputChannel(buffer_length=buffer_length))
+
+    def from_hdf(self, hdf, group_name=None):
+        """
+        Load the all output channels from an HDF5 file.
+
+        Args:
+            hdf (ProjectHDFio): HDF5 group object.
+            group_name (str): HDF5 subgroup name. (Default is None)
+        """
+        self._from_hdf_pattern(hdf, group_name=group_name, cls=OutputChannel)

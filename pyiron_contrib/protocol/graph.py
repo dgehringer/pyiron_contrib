@@ -7,6 +7,7 @@ from pyiron_contrib.utils.misc import LoggerMixin
 from pyiron_contrib.protocol.io import Input, Output
 from abc import ABC, abstractmethod
 from pyiron_contrib.protocol.utils.event import Event, EventHandler
+from pyiron_contrib.utils.hdf import generic_to_hdf
 
 """
 The goal here is to abstract and simplify the graph functionality.
@@ -242,13 +243,14 @@ class Graph(Vertex):
             hdf (ProjectHDFio): HDF5 group object.
             group_name (str): HDF5 subgroup name. (Default is None.)
         """
+        super(Graph, self).to_hdf(hdf, group_name=group_name)
         if group_name is not None:
             hdf5_server = hdf.open(group_name)
         else:
             hdf5_server = hdf
         hdf5_server["TYPE"] = str(type(self))
-        hdf5_server["startingvertexname"] = self.starting_vertex.name
-        hdf5_server["restartingvertexname"] = self.restarting_vertex.name
+        hdf5_server["startingvertexname"] = self.starting_vertex.vertex_name
+        hdf5_server["restartingvertexname"] = self.restarting_vertex.vertex_name
         self.vertices.to_hdf(hdf5_server, "vertices")
         self.edges.to_hdf(hdf5_server, "edges")
 
@@ -260,12 +262,11 @@ class Graph(Vertex):
             hdf (ProjectHDFio): HDF5 group object - optional
             group_name (str): HDF5 subgroup name - optional
         """
+        super(Graph, self).from_hdf(hdf=hdf, group_name=group_name)
         if group_name is not None:
             hdf5_server = hdf.open(group_name)
         else:
             hdf5_server = hdf
-
-        super(Graph, self).from_hdf(hdf=hdf, group_name=group_name)
 
         self.vertices.from_hdf(hdf5_server, "vertices")
         self.edges.from_hdf(hdf5_server, "edges")
@@ -285,7 +286,10 @@ class DotDict(dict):
         self.__setitem__(key, value)
 
     def __getattr__(self, item):
-        return self.__getitem__(item)
+        try:
+            return self.__getitem__(item)
+        except KeyError:
+            raise AttributeError("{} is neither an attribute nor an item".format(item))
 
 
 class Vertices(DotDict):
@@ -314,7 +318,7 @@ class Vertices(DotDict):
 
     def to_hdf(self, hdf, group_name=None):
         """
-        Store the Vertex in an HDF5 file.
+        Send each vertex to HDF.
 
         Args:
             hdf (ProjectHDFio): HDF5 group object.
@@ -332,11 +336,13 @@ class Vertices(DotDict):
 
     def from_hdf(self, hdf, group_name=None):
         """
-        Load the Protocol from an HDF5 file.
+        Load each vertex from HDF.
+
+        The base classes should all have been added by the graph, so we can iterate over self.
 
         Args:
-            hdf (ProjectHDFio): HDF5 group object - optional
-            group_name (str): HDF5 subgroup name - optional
+            hdf (ProjectHDFio): HDF5 group object.
+            group_name (str): HDF5 subgroup name. (Default is None.)
         """
         if group_name is not None:
             hdf5_server = hdf.open(group_name)
@@ -355,6 +361,9 @@ class Edges(DotDict):
 
     def __init__(self):
         super(Edges, self).__init__()
+
+    def __getattribute__(self, item):
+        return super(Edges, self).__getattribute__(item)
 
     def __setitem__(self, key, value):
         """Set vertex as a dead end -- all states lead to `None`."""
@@ -404,6 +413,13 @@ class Edges(DotDict):
             self[vertex.vertex_name][state] = next_vertex.vertex_name
 
     def to_hdf(self, hdf, group_name=None):
+        """
+        Save edges to HDF.
+
+        Args:
+            hdf (ProjectHDFio): HDF5 group object.
+            group_name (str): HDF5 subgroup name. (Default is None.)
+        """
         if group_name is not None:
             hdf5_server = hdf.open(group_name)
         else:
@@ -411,7 +427,15 @@ class Edges(DotDict):
 
         hdf5_server["TYPE"] = str(type(self))
         for name, edge in self.items():
-            hdf5_server[name] = edge
+            generic_to_hdf(edge, hdf5_server, group_name=name)
 
     def from_hdf(self, hdf, group_name):
+        """
+        Edges should be created by the graph on instantiation, so we don't load anything. We only wrote them so they'd
+        be readable in the HDF file without creating a python object.
+
+        Args:
+            hdf (ProjectHDFio): HDF5 group object.
+            group_name (str): HDF5 subgroup name. (Default is None.)
+        """
         pass

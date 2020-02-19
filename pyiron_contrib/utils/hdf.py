@@ -58,15 +58,17 @@ def _try_save_key(k, v, hdf, exclude=(dict, tuple, list)):
     return result
 
 
-def generic_to_hdf(value, hdf, group_name=None, logger=None):
+def generic_to_hdf(value, hdf, group_name, logger=None):
     """
     Saves also dictionaries and lists to hdf
     Args:
-        value: (obj) to object to save
-        hdf: the hdf server
-        group_name: (str) the group name where to store it
+        value (obj): The object to save.
+        hdf: The hdf server.
+        group_name (str): The group name where to store it.
     """
-    if isinstance(value, dict):
+    if hasattr(value, 'to_hdf'):
+        value.to_hdf(hdf, group_name=group_name)
+    elif isinstance(value, dict):
         # if we deal with a dictionary we have to open a new group anyway
         with hdf.open(group_name) as server:
             # store class metadata
@@ -77,7 +79,7 @@ def generic_to_hdf(value, hdf, group_name=None, logger=None):
                 if not isinstance(k, str):
                     # it is possible that the keys are not strings, thus we have to enforce this
                     if logger is not None:
-                        logger.warning('Key "%s" is not a string, it will be converted to %s' % (k, str(k)))
+                        logger.warning('Key "{}" is not a string, it will be converted to {}'.format(k, str(k)))
                     k = str(k)
                 # try it the easy way first (either call v.to_hdf or directly save it
                 if _try_save_key(k, v, server):
@@ -125,7 +127,7 @@ def generic_to_hdf(value, hdf, group_name=None, logger=None):
                 raise
 
 
-def generic_from_hdf(hdf, group_name=None):
+def generic_from_hdf(hdf, group_name, logger=None):
     """
     Loads dicts, lists and tuples as well as their subclasses from an hdf file
 
@@ -136,10 +138,10 @@ def generic_from_hdf(hdf, group_name=None):
     Returns: (obj) the object to return
     """
 
-    # handle special types at first
     # try a simple load
-    if 'TYPE' not in hdf[group_name].list_nodes():
+    if not hasattr(hdf[group_name], 'list_nodes') or 'TYPE' not in hdf[group_name].list_nodes():
         return hdf[group_name]
+    # handle special types
     elif hdf[group_name]['TYPE'] in list(KNOWN_COMPLEX_TYPES.keys()):
         obj = KNOWN_COMPLEX_TYPES[hdf[group_name]['TYPE']]()
         obj.from_hdf(hdf, group_name)
@@ -193,6 +195,6 @@ def generic_from_hdf(hdf, group_name=None):
                 result = cls_([val for idx, val in result])
                 return result
             else:
-                raise ImportError('Could not locate type(%s)' % server['FULLNAME'])
+                raise ImportError('Could not locate type({})'.format(server['FULLNAME']))
     else:
-        raise TypeError('I do not know how to deserialize type(%s)' % hdf[group_name])
+        raise TypeError('I do not know how to deserialize type({}), {}'.format(hdf[group_name], type(hdf[group_name])))
