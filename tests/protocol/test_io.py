@@ -2,7 +2,6 @@
 # Copyright (c) Max-Planck-Institut für Eisenforschung GmbH - Computational Materials Design (CM) Department
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
-import unittest
 import os
 from pyiron import Project
 from pyiron.base.generic.hdfio import ProjectHDFio
@@ -10,24 +9,10 @@ from pyiron_contrib.protocol.data_types import Lazy, NotData
 from pyiron_contrib.protocol.io import IOChannel, InputChannel, OutputChannel, Input, Output
 import numpy as np
 
-
-class TestIO(unittest.TestCase):
-    """Re-use setup and teardowns"""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.execution_path = os.path.dirname(os.path.abspath(__file__))
-        cls.project = Project(os.path.join(cls.execution_path, cls.__name__ + "_tests"))
-        cls.hdf = ProjectHDFio(cls.project, cls.__name__)
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.execution_path = os.path.dirname(os.path.abspath(__file__))
-        project = Project(os.path.join(cls.execution_path, cls.__name__ + "_tests"))
-        project.remove(enable=True)
+from pyiron_contrib.utils.hdf_tester import TestHasProjectHDF
 
 
-class TestChannel(TestIO):
+class TestChannel(TestHasProjectHDF):
 
     @classmethod
     def setUpClass(cls):
@@ -99,7 +84,7 @@ class TestChannel(TestIO):
         self.assertEqual(len(loading.value), 1)
 
 
-class TestInput(TestIO):
+class TestInput(TestHasProjectHDF):
 
     def test_input(self):
         self.assertRaises(TypeError, Input.__init__, {})
@@ -141,7 +126,7 @@ class TestInput(TestIO):
             self.assertEqual(schan.resolve(), lchan.resolve())
 
 
-class TestOutput(TestIO):
+class TestOutput(TestHasProjectHDF):
 
     def test_output(self):
         self.assertRaises(TypeError, Output.__init__, {})
