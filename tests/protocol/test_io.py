@@ -3,12 +3,44 @@
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
 import unittest
+import os
+from pyiron import Project
+from pyiron.base.generic.hdfio import ProjectHDFio
 from pyiron_contrib.protocol.lazy import Lazy, NotData
 from pyiron_contrib.protocol.io import IOChannel, InputChannel, OutputChannel, Input, Output
 import numpy as np
 
 
-class TestChannel(unittest.TestCase):
+class TestIO(unittest.TestCase):
+    """Re-use setup and teardowns"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.execution_path = os.path.dirname(os.path.abspath(__file__))
+        cls.project = Project(os.path.join(cls.execution_path, cls.__name__ + "_tests"))
+        cls.hdf = ProjectHDFio(cls.project, cls.__name__)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.execution_path = os.path.dirname(os.path.abspath(__file__))
+        project = Project(os.path.join(cls.execution_path, cls.__name__ + "_tests"))
+        project.remove(enable=True)
+
+
+class TestChannel(TestIO):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.execution_path = os.path.dirname(os.path.abspath(__file__))
+        cls.project = Project(os.path.join(cls.execution_path, "channel_tests"))
+        cls.hdf = ProjectHDFio(cls.project, "channel")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.execution_path = os.path.dirname(os.path.abspath(__file__))
+        os.remove(os.path.join(cls.execution_path, 'pyiron.log'))
+        project = Project(os.path.join(cls.execution_path, "channel_tests"))
+        project.remove(enable=True)
 
     def test_channel(self):
         channel = IOChannel(['a'])
@@ -26,6 +58,16 @@ class TestChannel(unittest.TestCase):
         self.assertEqual(len(InputChannel()), 0)
         self.assertTrue(np.all(InputChannel([1, 2, 3]).resolve() == [1, 2, 3]))
         self.assertTrue(np.all(InputChannel(default='a').resolve() == 'a'))
+
+    def test_input_channel_hdf(self):
+        saving = InputChannel()
+        saving.push(1)
+        saving.push(Lazy('a'))
+        saving.to_hdf(self.hdf, 'input_channel')
+        loading = InputChannel()
+        loading.from_hdf(self.hdf, 'input_channel')
+        self.assertEqual(saving.resolve(), loading.resolve())
+        self.assertEqual(len(loading.value), 1)
 
     def test_output_channel(self):
         channel = OutputChannel(3)
@@ -45,8 +87,18 @@ class TestChannel(unittest.TestCase):
         with self.assertRaises(ValueError):
             channel.buffer_length = 0
 
+    def test_output_channel_hdf(self):
+        saving = OutputChannel()
+        saving.push(1)
+        saving.push(Lazy('a'))
+        saving.to_hdf(self.hdf, 'output_channel')
+        loading = OutputChannel()
+        loading.from_hdf(self.hdf, 'output_channel')
+        self.assertTrue(np.all(s == l for s, l in zip(saving.resolve(), loading.resolve())))
+        self.assertEqual(len(loading.value), 1)
 
-class TestInput(unittest.TestCase):
+
+class TestInput(TestIO):
 
     def test_input(self):
         self.assertRaises(TypeError, Input.__init__, {})
@@ -74,8 +126,21 @@ class TestInput(unittest.TestCase):
         input_dict.channel3 = InputChannel(default=Lazy(NotData()))
         self.assertRaises(RuntimeError, input_dict.resolve)
 
+    def test_hdf(self):
+        saving = Input()
+        saving.add_channel('foo', 1)
+        saving.foo.push(Lazy(2))
+        saving.add_channel('bar')
+        saving.bar.push('bar')
+        saving.to_hdf(self.hdf, 'input')
+        loading = Input()
+        loading.from_hdf(self.hdf, 'input')
+        for k, schan in saving.items():
+            lchan = loading[k]
+            self.assertEqual(schan.resolve(), lchan.resolve())
 
-class TestOutput(unittest.TestCase):
+
+class TestOutput(TestIO):
 
     def test_output(self):
         self.assertRaises(TypeError, Output.__init__, {})
@@ -104,6 +169,20 @@ class TestOutput(unittest.TestCase):
         }
         for k, v in output.resolve().items():
             self.assertTrue(all(vi == ref for vi, ref in zip(v, ref_dict[k])))
+
+    def test_hdf(self):
+        saving = Output()
+        saving.add_channel('foo')
+        saving.foo.push(1)
+        saving.foo.push(Lazy(2))
+        saving.add_channel('bar')
+        saving.bar.push('bar')
+        saving.to_hdf(self.hdf, 'input')
+        loading = Output()
+        loading.from_hdf(self.hdf, 'input')
+        for k, schan in saving.items():
+            lchan = loading[k]
+            self.assertTrue(s == l for s, l in zip(schan.resolve(), lchan.resolve()))
 
 
 class TestNotData(unittest.TestCase):
