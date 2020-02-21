@@ -52,6 +52,7 @@ class TestChannel(TestIO):
         channel += 'd'
         self.assertTrue(np.all(channel.value == ['a', 'b', 'c', 'd']))
         channel[0] = 'z'
+        channel.logger.warning("You should have just gotten a warning about not being able to assign; it's intentional")
         self.assertTrue(np.all(channel.value == ['a', 'b', 'c', 'd']))
 
     def test_input_channel(self):
