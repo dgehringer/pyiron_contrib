@@ -6,7 +6,7 @@ import unittest
 import os
 from pyiron import Project
 from pyiron.base.generic.hdfio import ProjectHDFio
-from pyiron_contrib.protocol.lazy import Lazy, NotData
+from pyiron_contrib.protocol.data_types import Lazy, NotData
 from pyiron_contrib.protocol.io import IOChannel, InputChannel, OutputChannel, Input, Output
 import numpy as np
 

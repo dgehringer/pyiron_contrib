@@ -8,7 +8,7 @@ from pyiron_contrib.protocol.io import Input, Output
 from abc import ABC, abstractmethod
 from pyiron_contrib.protocol.utils.event import Event, EventHandler
 from pyiron_contrib.utils.hdf import generic_to_hdf, open_if_group
-from pyiron_contrib.protocol.lazy import Lazy
+from pyiron_contrib.protocol.data_types import Lazy
 
 """
 The goal here is to abstract and simplify the graph functionality.

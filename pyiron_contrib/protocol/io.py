@@ -4,7 +4,7 @@
 
 from __future__ import print_function
 from collections import UserList
-from pyiron_contrib.protocol.lazy import Lazy, NotData
+from pyiron_contrib.protocol.data_types import Lazy, NotData
 from abc import ABC, abstractmethod
 from pyiron_contrib.utils.misc import LoggerMixin
 from pyiron_contrib.utils.hdf import generic_to_hdf, generic_from_hdf, open_if_group
