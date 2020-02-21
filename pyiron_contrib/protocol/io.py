@@ -51,7 +51,7 @@ class IOChannel(Lazy, ABC, LoggerMixin):
         return self
 
     def __setitem__(self, key, value):
-        self.logger.warning("Items cannot be assigned to stacks. Use `push`.")
+        self.logger.warning("Items cannot be assigned to channels. Use `push`.")
 
     # def __str__(self):
     #     return "{}({})".format(self.__class__.__name__, self.data.__str__())
@@ -146,7 +146,7 @@ class OutputChannel(IOChannel):
     def buffer_length(self, new_length):
         new_length = int(new_length)
         if new_length < 1:
-            raise ValueError("Output stacks have a minimum length of 1, got {}".format(new_length))
+            raise ValueError("Output channels have a minimum length of 1, got {}".format(new_length))
         length_change = new_length - self._buffer_length
         self._buffer_length = new_length
 
@@ -253,7 +253,7 @@ class Input(IO):  # UserDict):  I'm having trouble with UserDict, it's .data att
     Stores a collection of input channels. Resolution gives a dictionary of the top-most items in each channel which
     can be resolved.
 
-    Raises a RuntimeError if it gets to the end of one of its stacks without finding valid data.
+    Raises a RuntimeError if it gets to the end of one of its channels without finding valid data.
 
     *Only* allows items to be set if they are instances of `InputChannel`.
     """
