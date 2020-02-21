@@ -5,6 +5,7 @@
 import unittest
 from pyiron_contrib.protocol.graph import Vertex, Graph, DotDict, Vertices, Edges
 import numpy as np
+from pyiron_contrib.utils.hdf_tester import TestHasProjectHDF
 
 
 class DummyVertex(Vertex):
@@ -27,6 +28,9 @@ class DummyGraph(Graph):
         self.vertices.v2 = DummyVertex()
         self.vertices.v3 = DummyVertex()
 
+        self.starting_vertex = self.vertices.v1
+        self.restarting_vertex = self.vertices.v1
+
     def set_edges(self):
         v1, v2, v3 = self.vertices.v1, self.vertices.v2, self.vertices.v3
         self.edges.set_flow_chain(
@@ -34,7 +38,6 @@ class DummyGraph(Graph):
             v2, Vertex.DEFAULT_STATE,
             v3
         )
-        self.starting_vertex = v1
 
     def wire_data_flow(self):
         v1, v2, v3 = self.vertices.v1, self.vertices.v2, self.vertices.v3
@@ -86,11 +89,11 @@ class TestDicts(unittest.TestCase):
         self.assertEqual(edges['v2']['next'], 'v1')
 
 
-class TestVertex(unittest.TestCase):
+class TestVertex(TestHasProjectHDF):
     pass
 
 
-class TestGraph(unittest.TestCase):
+class TestGraph(TestHasProjectHDF):
 
     def test_graph(self):
         graph = DummyGraph()
@@ -114,3 +117,26 @@ class TestGraph(unittest.TestCase):
         self.assertEqual(~graph.v2.output.y[-1], 2)
         self.assertEqual(~graph.v3.output.y[-1], 3)
         self.assertEqual(~graph.output.sum[-1], 3)
+
+        graph.to_hdf(self.hdf, 'graph')
+        loading = DummyGraph()
+        loading.from_hdf(self.hdf, 'graph')
+
+        self.assertTrue(np.all(list(loading.vertices.keys()) == ['v1', 'v2', 'v3']))
+        ref_edges = {
+            'v1': {'next': 'v2'},
+            'v2': {'next': 'v3'},
+            'v3': {'next': None},
+        }
+
+        for k, v in loading.edges.items():
+            for s, vv in v.items():
+                self.assertEqual(vv, ref_edges[k][s])
+
+        self.assertEqual(~loading.input.x0, 1)
+        self.assertEqual(~loading.input.x1, -1)
+
+        self.assertEqual(~loading.v1.output.y[-1], 1)
+        self.assertEqual(~loading.v2.output.y[-1], 2)
+        self.assertEqual(~loading.v3.output.y[-1], 3)
+        self.assertEqual(~loading.output.sum[-1], 3)

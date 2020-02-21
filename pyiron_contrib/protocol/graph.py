@@ -363,6 +363,7 @@ class Vertices(DotDict):
         hdf5_server = open_if_group(hdf, group_name)
         for k, v in self.items():
             v.from_hdf(hdf5_server, k)
+            self[k] = v
 
 
 class Edges(DotDict):

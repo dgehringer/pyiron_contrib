@@ -8,7 +8,6 @@ from pyiron.base.generic.hdfio import ProjectHDFio
 from pyiron_contrib.protocol.data_types import Lazy, NotData
 from pyiron_contrib.protocol.io import IOChannel, InputChannel, OutputChannel, Input, Output
 import numpy as np
-
 from pyiron_contrib.utils.hdf_tester import TestHasProjectHDF
 
 
