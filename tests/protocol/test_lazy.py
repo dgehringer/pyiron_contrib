@@ -87,3 +87,7 @@ class TestLazy(unittest.TestCase):
 
     def test_lazy_notdata(self):
         self.assertIsInstance(Lazy(NotData()).foo(1, 2, 3)[0].resolve(), NotData)
+
+
+class TestNotData(unittest.TestCase):
+    pass

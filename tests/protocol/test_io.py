@@ -183,7 +183,3 @@ class TestOutput(TestIO):
         for k, schan in saving.items():
             lchan = loading[k]
             self.assertTrue(s == l for s, l in zip(schan.resolve(), lchan.resolve()))
-
-
-class TestNotData(unittest.TestCase):
-    pass
