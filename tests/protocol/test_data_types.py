@@ -90,4 +90,22 @@ class TestLazy(unittest.TestCase):
 
 
 class TestNotData(unittest.TestCase):
-    pass
+
+    def test_stays_not_data(self):
+        """We added a lot of magic methods, so that NotData should stay NotData. We'll spot-check here"""
+
+        nd = NotData()
+        self.assertIsInstance(nd(), NotData)
+        self.assertIsInstance(nd[0], NotData)
+        self.assertIsInstance(nd[:2], NotData)
+        self.assertIsInstance(nd.foo, NotData)
+        self.assertIsInstance(nd.foo(), NotData)
+        self.assertIsInstance(nd * 1, NotData)
+        self.assertIsInstance(nd - 1, NotData)
+        self.assertIsInstance(nd + 'foo', NotData)
+        nd += 1
+        self.assertIsInstance(nd, NotData)
+        nd *= 2
+        self.assertIsInstance(nd, NotData)
+        nd += 'foo'
+        self.assertIsInstance(nd, NotData)
