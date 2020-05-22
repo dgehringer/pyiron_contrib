@@ -472,7 +472,7 @@ class PartitionStructure(PrimitiveVertex):
             buffer_ids = domain_ids['buffer']
             filler_ids = domain_ids['filler']
             region_I_ids = np.concatenate((seed_ids, core_ids, buffer_ids))
-            bb = self._get_bounding_box(superstructure[np.concatenate((region_I_ids, filler_ids))])
+            bb = self._get_bounding_box(superstructure[np.concatenate((region_I_ids, filler_ids)).astype(int)])
         elif seed_ids is not None:
             shells = self._build_shells(superstructure, n_core_shells + n_buffer_shells, shell_cutoff, seed_ids)
             core_ids = np.concatenate(shells[:n_core_shells])
