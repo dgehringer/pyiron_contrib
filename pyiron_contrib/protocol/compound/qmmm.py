@@ -473,6 +473,7 @@ class PartitionStructure(PrimitiveVertex):
             filler_ids = domain_ids['filler']
             region_I_ids = np.concatenate((seed_ids, core_ids, buffer_ids))
             bb = self._get_bounding_box(superstructure[np.concatenate((region_I_ids, filler_ids)).astype(int)])
+            domain_ids = {'seed': seed_ids, 'core': core_ids, 'buffer': buffer_ids, 'filler': filler_ids}
         elif seed_ids is not None:
             shells = self._build_shells(superstructure, n_core_shells + n_buffer_shells, shell_cutoff, seed_ids)
             core_ids = np.concatenate(shells[:n_core_shells])
@@ -602,6 +603,7 @@ class PartitionStructure(PrimitiveVertex):
         Returns:
             numpy.ndarray: A 3x2 array of the x-min through z-max values for the bounding rectangular prism.
         """
+
         wrapped_structure = structure.copy()
         # Take the frist positions and wrap the atoms around there to determine the size of the bounding box
         wrap_center = tuple(np.dot(np.linalg.inv(structure.cell), structure.positions[0, :]))
