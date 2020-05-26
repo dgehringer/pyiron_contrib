@@ -45,6 +45,7 @@ class ExternalHamiltonian(Vertex):
     Output channels:
 
     """
+    DEFAULT_WHITELIST = {'output': {'energy_pot': 1}}
 
     def __init__(self, vertex_name=None):
         super(ExternalHamiltonian, self).__init__(vertex_name=vertex_name)

@@ -286,3 +286,10 @@ class NotData(object):
 
     def __getattr__(self, item):
         return self
+
+
+def resolve_if_lazy(value):
+    if isinstance(value, Lazy):
+        return value.resolve()
+    else:
+        return value

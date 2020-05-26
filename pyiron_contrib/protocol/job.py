@@ -6,6 +6,7 @@ from __future__ import print_function
 from pyiron_contrib.protocol.graph import Graph
 from pyiron.base.job.generic import GenericJob
 from pyiron_contrib.protocol.atomistic.graphs.minimize import Minimize
+from pyiron.base.generic.hdfio import ProjectHDFio
 
 """
 Connect graphs and pyiron jobs.
@@ -21,7 +22,7 @@ __status__ = "development"
 __date__ = "Feb 15, 2020"
 
 
-class Protocol(Graph, GenericJob):
+class Protocol(GenericJob, Graph):
     """
     A parent class for graphs which are being instantiated as regular pyiron jobs, i.e. the highest level graph in
     their context.
@@ -38,6 +39,7 @@ class Protocol(Graph, GenericJob):
     def __init__(self, project=None, job_name=None):
         super(Protocol, self).__init__(project=project, job_name=job_name)
         self.vertex_name = job_name
+        self.hdf = self.project_hdf5
 
     def execute(self):
         super(Protocol, self).execute()
@@ -74,7 +76,8 @@ class Protocol(Graph, GenericJob):
         """
         if hdf is None:
             hdf = self.project_hdf5
-        super(Protocol, self).to_hdf(hdf=hdf, group_name=group_name)
+        GenericJob.to_hdf(self, hdf=hdf, group_name=group_name)
+        Graph.to_hdf(self, hdf=hdf, group_name=group_name)
 
     def from_hdf(self, hdf=None, group_name=None):
         """
@@ -86,8 +89,11 @@ class Protocol(Graph, GenericJob):
         """
         if hdf is None:
             hdf = self.project_hdf5
-        super(Protocol, self).from_hdf(hdf=hdf, group_name=group_name)
+        GenericJob.from_hdf(self, hdf=hdf, group_name=group_name)
+        Graph.from_hdf(self, hdf=hdf, group_name=group_name)
 
 
 class ProtocolNewMinimize(Protocol, Minimize):
-    pass
+    def __init__(self, *args, **kwargs):
+        Minimize.__init__(self, *args, **kwargs)
+        Protocol.__init__(self, *args, **kwargs)

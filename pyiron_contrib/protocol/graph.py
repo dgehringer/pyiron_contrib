@@ -3,12 +3,16 @@
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
 from __future__ import print_function
+
+from pyiron.base.generic.hdfio import ProjectHDFio
 from pyiron_contrib.utils.misc import LoggerMixin
 from pyiron_contrib.protocol.io import Input, Output
 from abc import ABC, abstractmethod
 from pyiron_contrib.protocol.utils.event import Event, EventHandler
-from pyiron_contrib.utils.hdf import generic_to_hdf, open_if_group
-from pyiron_contrib.protocol.data_types import Lazy
+from pyiron_contrib.utils.hdf import generic_to_hdf, open_if_group, generic_from_hdf
+from pyiron_contrib.protocol.data_types import resolve_if_lazy
+from pyiron.base.generic.hdfio import FileHDFio
+import os
 
 """
 The goal here is to abstract and simplify the graph functionality.
@@ -27,23 +31,22 @@ __date__ = "Feb 10, 2020"
 
 class Vertex(LoggerMixin, ABC):
     DEFAULT_STATE = "next"
+    DEFAULT_WHITELIST = {}
 
     def __init__(self, *args, vertex_name=None, **kwargs):
-        super(Vertex, self).__init__(*args, **kwargs)
+        super(Vertex, self).__init__()
 
-        self.input = Input()
-        self.output = Output()
-        self.archive = Output()
-        self.init_io_channels()
-        self.clock = 0
-        self.archive_period = 3
-        self.archive_length = 3
-        self.archive = DotDict()
-        self.archive.output = DotDict()
         self.vertex_name = vertex_name
         self._vertex_state = self.DEFAULT_STATE
         self.possible_vertex_states = [self.DEFAULT_STATE]
         self.parent_graph = None
+        self._hdf = None
+
+        self.input = Input()
+        self.output = Output()
+        self.init_io_channels()
+
+        self.archive = Archive(owner=self, whitelist=self.DEFAULT_WHITELIST)
 
     @property
     def vertex_state(self):
@@ -54,6 +57,26 @@ class Vertex(LoggerMixin, ABC):
         if new_state not in self.possible_vertex_states:
             raise ValueError("New state not in list of possible states")
         self._vertex_state = new_state
+
+    @property
+    def hdf(self):
+        if self.parent_graph is not None:
+            return self.parent_graph.hdf.open('vertices/' + self.vertex_name)
+        elif self._hdf is None:
+            hdf_location = os.path.abspath(os.getcwd())
+            hdf_name = self.vertex_name or self.__class__.__name__
+            self._hdf = FileHDFio(file_name=os.path.join(hdf_location, hdf_name))
+            return self._hdf
+        else:
+            return self._hdf
+
+    @hdf.setter
+    def hdf(self, new_hdf):
+        if not isinstance(new_hdf, (ProjectHDFio, FileHDFio)):
+            raise TypeError("New HDFs must be of type ProjectHDFio or FileHDFio, but vertex {} got type {}".format(
+                self.vertex_name, type(new_hdf)
+            ))
+        self._hdf = new_hdf
 
     @abstractmethod
     def init_io_channels(self):
@@ -81,29 +104,7 @@ class Vertex(LoggerMixin, ABC):
     def update_and_archive(self, output_data):
         for key, value in output_data.items():
             getattr(self.output, key).push(value)
-        self._archive()
-
-    def _archive(self):
-        clock = self._resolve_if_lazy(self.clock)
-        period = self._resolve_if_lazy(self.archive_period)
-        length = self._resolve_if_lazy(self.archive_length)
-
-        if clock % period == 0:
-            for k, v in self.output.items():
-                try:
-                    self.archive[k] += [v.resolve()]
-                except KeyError:
-                    self.archive[k] = [v.resolve()]
-
-        if len(self.archive[k]) == length:
-            pass  # Flush to hdf
-            self.archive[k] = []
-
-    def _resolve_if_lazy(self, value):
-        if isinstance(value, Lazy):
-            return value.resolve()
-        else:
-            return value
+        self.archive.update()
 
     def get_graph_location(self):
         return self._get_graph_location()[:-1]  # Cut the trailing underscore
@@ -147,12 +148,14 @@ class Vertex(LoggerMixin, ABC):
         self.output.from_hdf(hdf=hdf5_server, group_name="output")
 
     def finish(self):
-        pass
+        self.archive.finish()
 
 
 class Graph(Vertex):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, hdf=None, **kwargs):
         super(Graph, self).__init__(*args, **kwargs)
+
+        self._hdf = hdf
 
         # Declare attributes
         self.vertices = Vertices(self)
@@ -252,7 +255,7 @@ class Graph(Vertex):
 
     def set_clock_for_all_vertices(self, clock):
         for v in self.vertices.values():
-            v.clock = clock
+            v.archive.clock = clock
 
     def to_hdf(self, hdf, group_name=None):
         """
@@ -304,13 +307,17 @@ class DotDict(dict):
         except KeyError:
             raise AttributeError("{} is neither an attribute nor an item".format(item))
 
+
+class GraphDict(DotDict):
+    """A parent class for Vertices and Edges"""
+
     def _only_allow_vertex(self, value):
         if not isinstance(value, Vertex):
             raise TypeError("{} expected a Vertex object but got {}".format(
                 self.__class__.__name__, type(value)))
 
 
-class Vertices(DotDict):
+class Vertices(GraphDict):
     """
     Stores vertices and synchronizes their `vertex_name` attribute with the key to keep graph, vertices, and edges all
     synchonized.
@@ -366,7 +373,7 @@ class Vertices(DotDict):
             self[k] = v
 
 
-class Edges(DotDict):
+class Edges(GraphDict):
     """
     A nested dictionary of names specifying vertices, their states, and which vertex to go to next when leaving with
     a given state.
@@ -446,3 +453,142 @@ class Edges(DotDict):
             group_name (str): HDF5 subgroup name. (Default is None.)
         """
         pass
+
+
+class WhitelistDict(DotDict):
+    def __init__(self, value=None):
+        if value is None:
+            super(WhitelistDict, self).__init__()
+        elif isinstance(value, (DotDict, dict)):
+            for k, v in value.items():
+                setattr(self, k, v)
+        else:
+            raise TypeError("WhitelistDict can only be instantiated using a dict or DotDict for initial values, but"
+                            "got {}".format(type(value)))
+
+    def __setattr__(self, key, value):
+        if isinstance(value, (dict, DotDict)):
+            value = WhitelistDict(value)
+        self.__setitem__(key, value)
+
+
+class Archive:
+    """A convenience class for reading the HDF5 file of vertices."""
+
+    ERROR_MESSAGE = "The graph {} cannot set values to its archive directly, the archive just reads the hdf file"
+
+    def __init__(self, owner, whitelist, cache_length=10, clock=0):
+        """
+
+        Args:
+            owner (Vertex): The vertex whose archived values we want to read.
+        """
+        if not isinstance(owner, Vertex):
+            raise TypeError("An archive can only be the attribute of a Vertex, but got {} for owner type".format(
+                type(owner)
+            ))
+        self._owner = owner
+        self._input_cache = DotDict()
+        self._output_cache = DotDict()
+        self.whitelist = WhitelistDict(whitelist)
+        if not hasattr(self.whitelist, 'input'):
+            self.whitelist.input = {}
+        if not hasattr(self.whitelist, 'output'):
+            self.whitelist.output = {}
+        self.cache_length = cache_length
+        self.clock = clock
+
+    def __getitem__(self, item):
+        try:
+            val = self._owner.hdf['archive/' + item]
+        except KeyError:
+            return None
+
+        if isinstance(val, (ProjectHDFio, FileHDFio)):
+            return val
+        else:
+            return None
+
+    def __getattr__(self, item):
+        return self.__getitem__(item)
+
+    def __setitem__(self, key, value):
+        raise RuntimeError(self.ERROR_MESSAGE.format(self._owner.get_graph_location()))
+
+    def __setattr__(self, key, value):
+        if key in ['_owner', 'cache_length', '_input_cache', '_output_cache', 'whitelist', 'clock']:
+            super(Archive, self).__setattr__(key, value)
+        else:
+            raise RuntimeError(self.ERROR_MESSAGE.format(self._owner.get_graph_location()))
+
+    def __str__(self):
+        return str(self._owner['archive'])
+
+    def update(self):
+        clock = resolve_if_lazy(self.clock)
+        print("UPDATE CLOCK", clock, type(clock))
+        length = resolve_if_lazy(self.cache_length)
+
+        for source, cache, whitelist, io_flag in zip(
+                [self._owner.input, self._owner.output],
+                [self._input_cache, self._output_cache],
+                [self.whitelist.input, self.whitelist.output],
+                ['input', 'output']
+        ):
+
+            for k, v in source.items():
+                try:
+                    period = resolve_if_lazy(whitelist[k])
+                except KeyError:
+                    continue
+
+                if clock % period == 0:
+                    val = v.resolve()
+                    if io_flag == 'output':
+                        val = val[-1]  # Only save the most recent output
+                    try:
+                        cache[k] += [val]
+                        # TODO: Add comparer check between val and cache[k][-1]
+                    except KeyError:
+                        cache[k] = [val]
+
+                if len(cache[k]) == length:
+                    self._dump_cache(clock, io_flag, k, cache[k])
+
+    def _update_cache(self):
+        pass
+
+    def _dump_cache(self, clock, io_flag, cache_name, cache):
+        with self._owner.hdf.open('archive/{}/{}'.format(io_flag, cache_name)) as hdf_server:
+            try:
+                history = generic_from_hdf(hdf_server['data'], cache_name)
+                history += cache
+                generic_to_hdf(history, hdf_server['data'], cache_name)
+                # TODO: Is there a more efficient way to append complex values to hdf?
+                hdf_server['clock'] += [clock]
+                print("Archiving for {}.{}.{}".format(self._owner.vertex_name, io_flag, cache_name))
+            except ValueError:
+                print(clock, type(clock))
+                hdf_server['clock'] = [clock]
+                with hdf_server.open('data') as data_server:
+                    generic_to_hdf(cache, data_server, cache_name)
+                print("Archive started for {}.{}.{}".format(self._owner.vertex_name, io_flag, cache_name))
+        cache = []
+
+    def finish(self):
+        clock = resolve_if_lazy(self.clock)
+        print("FINISH CLOCK", clock, type(clock))
+
+        for source, cache, whitelist, io_flag in zip(
+                [self._owner.input, self._owner.output],
+                [self._input_cache, self._output_cache],
+                [self.whitelist.input, self.whitelist.output],
+                ['input', 'output']
+        ):
+            for k, v in source.items():
+                try:
+                    if len(cache[k]) > 0:
+                        self._dump_cache(clock, io_flag, k, cache[k])
+                        print("Final dump for {}.{}.{}".format(self._owner.vertex_name, io_flag, k))
+                except KeyError:
+                    pass

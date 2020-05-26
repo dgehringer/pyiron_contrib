@@ -64,7 +64,7 @@ class TestDicts(unittest.TestCase):
     def test_vertices(self):
         with self.assertRaises(TypeError):
             verts = Vertices(foo=None)
-        verts = Vertices(DummyGraph())
+        verts = Vertices(DummyGraph(vertex_name='parent_for_vertices'))
         self.assertRaises(TypeError, verts.__setitem__, verts, 'foo', 1)
         verts.foo = self.v1
         self.assertEqual(self.v1.vertex_name, 'foo')
@@ -96,7 +96,8 @@ class TestVertex(TestHasProjectHDF):
 class TestGraph(TestHasProjectHDF):
 
     def test_graph(self):
-        graph = DummyGraph()
+        graph = DummyGraph(vertex_name='testing_dummy')
+        graph.v1.archive.whitelist.output.y = 1
 
         # Check setup
         self.assertTrue(np.all(list(graph.vertices.keys()) == ['v1', 'v2', 'v3']))
@@ -119,7 +120,7 @@ class TestGraph(TestHasProjectHDF):
         self.assertEqual(~graph.output.sum[-1], 3)
 
         graph.to_hdf(self.hdf, 'graph')
-        loading = DummyGraph()
+        loading = DummyGraph(vertex_name='loading_dummy')
         loading.from_hdf(self.hdf, 'graph')
 
         self.assertTrue(np.all(list(loading.vertices.keys()) == ['v1', 'v2', 'v3']))

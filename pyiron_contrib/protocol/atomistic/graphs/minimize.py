@@ -43,6 +43,15 @@ class Minimize(Graph):
         forces (numpy.ndarray): Atomic forces in eV/angstrom.
     """
 
+    DEFAULT_WHITELIST = {
+        'input': {},
+        'output': {
+            'calc_static': {
+                'energy_pot': 1
+            }
+        }
+    }
+
     def init_io_channels(self):
         ichan = self.input.add_channel
         ichan('ref_job_full_path')
@@ -77,7 +86,7 @@ class Minimize(Graph):
             v.clock,
             v.check_steps
         )
-        self.starting_vertex = v.check_steps
+        self.starting_vertex = v.clock  #check_steps
         self.restarting_vertex = v.check_steps
 
     def wire_data_flow(self):
