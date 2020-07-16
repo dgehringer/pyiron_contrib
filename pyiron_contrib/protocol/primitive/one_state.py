@@ -8,6 +8,7 @@ from pyiron_contrib.protocol.utils import Pointer
 import numpy as np
 from pyiron.atomistics.job.interactive import GenericInteractive
 from pyiron.lammps.lammps import LammpsInteractive
+from pyiron.vasp.vasp import VaspInteractive
 from scipy.constants import physical_constants
 from ase.geometry import find_mic, get_distances  # TODO: Wrap things using pyiron functionality
 from pyiron import Project
@@ -198,8 +199,16 @@ class ExternalHamiltonian(PrimitiveVertex):
                 job.interactive_flush_frequency = 10**10
                 job.interactive_write_frequency = 10**10
                 self._disable_lmp_output = True
-
+            if isinstance(job, VaspInteractive):
+                # calc_static will set NSW=0 and thus VASP will exit after the first step, which therefore results in a broken PIPE Error
+                ionic_steps = job.input.incar['NSW']
+                vasp_interactive_job = True
+            else:
+                vasp_interactive_job = False
             job.calc_static()
+            if vasp_interactive_job:
+                job.input.incar['NSW'] = ionic_steps
+                # Make sure to reset NSW to its initial value after job.calc_static sets it to job.input.incar['NSW'] = 0
             job.run(run_again=True)
             # TODO: Running is fine for Lammps, but wasteful for DFT codes! Get the much cheaper interface
             #  initialization working -- right now it throws a (passive) TypeError due to database issues
