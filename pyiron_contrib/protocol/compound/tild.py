@@ -1362,7 +1362,7 @@ class ATILDParallel(TILDParent):
             g.clock,
             g.post
         )
-        g.starting_vertex = g.create_vacancy
+        g.starting_vertex = g.build_lambdas
         g.restarting_vertex = g.run_lambda_points
 
     def define_information_flow(self):
