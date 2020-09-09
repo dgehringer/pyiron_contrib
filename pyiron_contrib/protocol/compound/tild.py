@@ -1290,3 +1290,370 @@ class VacancyTILDParallel(VacancyTILD):
 
 class ProtoVacancyTILDParallel(Protocol, VacancyTILDParallel, ABC):
     pass
+
+
+class ATILDParallel(TILDParent):
+    """
+    Thermodynamically interpolate between two reference jobs sharing the same structure (with optional changes in atomic
+    species).
+
+    Input:
+        ref_job_full_path_a,b (str): Reference representations to use.
+        structure_a,b (Atoms): Identical (except for, optionally, species) structures for the representations.
+        n_lambdas (int): How many steps to take between one representation and the other (including endpoints).
+        [a bunch more that have default values]: Stuff.
+    """
+    DefaultWhitelist = {
+    }
+
+    def __init__(self, **kwargs):
+        super(TILDParent, self).__init__(**kwargs)
+
+        id_ = self.input.default
+        id_.temperature = 1.
+        id_.n_steps = 100
+        id_.temperature_damping_timescale = 100.
+        id_.overheat_fraction = 2.
+        id_.time_step = 1.
+        id_.sampling_period = 1
+        id_.thermalization_steps = 10
+        id_.sleep_time = 0
+        id_.energy_kin = None
+        id_.custom_lambdas = None
+        id_.force_constants = None
+        id_.spring_constant = None
+        id_.fix_com = True
+        id_.use_reflection = True
+        # TODO: Need more than input and default, but rather access order, to work without reflection...
+        id_.plot = False
+        id_.ensure_iterable_mask = True
+
+    def define_vertices(self):
+        # Graph components
+        g = self.graph
+        ip = Pointer(self.input)
+        g.build_lambdas = BuildMixingPairs()
+        g.mass_mixer = WeightedSum()
+        g.initialize_a_jobs = CreateJob()
+        g.initialize_b_jobs = CreateJob()
+        g.initial_velocities = SerialList(RandomVelocity)
+        g.initial_forces = SerialList(Zeros)
+        g.run_lambda_points = ParallelList(Transmutor, sleep_time=ip.sleep_time)
+        g.clock = Counter()
+        g.post = TILDPostProcess()
+
+    def define_execution_flow(self):
+        # Execution flow
+        g = self.graph
+        g.make_pipeline(
+            g.build_lambdas,
+            g.mass_mixer,
+            g.initialize_a_jobs,
+            g.initialize_b_jobs,
+            g.initial_velocities,
+            g.initial_forces,
+            g.run_lambda_points,
+            g.clock,
+            g.post
+        )
+        g.starting_vertex = g.create_vacancy
+        g.restarting_vertex = g.run_lambda_points
+
+    def define_information_flow(self):
+        # Data flow
+        g = self.graph
+        gp = Pointer(self.graph)
+        ip = Pointer(self.input)
+
+        # build_lambdas
+        g.build_lambdas.input.n_lambdas = ip.n_lambdas
+        g.build_lambdas.input.custom_lambdas = ip.custom_lambdas
+
+        # mass_mixer
+        g.mass_mixer.input.vectors = [
+            ip.structure_a.get_masses,
+            ip.structure_a.get_masses
+        ]
+        g.mass_mixer.input.weights = [0.5, 0.5]
+
+        # initialize_full_jobs
+        g.initialize_a_jobs.input.n_images = ip.n_lambdas
+        g.initialize_a_jobs.input.ref_job_full_path = ip.ref_job_full_path_a
+        g.initialize_a_jobs.input.structure = ip.structure_a
+
+        # initialize_vac_jobs
+        g.initialize_b_jobs.input.n_images = ip.n_lambdas
+        g.initialize_b_jobs.input.ref_job_full_path = ip.ref_job_full_path_b
+        g.initialize_b_jobs.input.structure = ip.structure_b
+
+        # initial_velocities
+        g.initial_velocities.input.n_children = ip.n_lambdas
+        g.initial_velocities.direct.temperature = ip.temperature
+        g.initial_velocities.direct.masses = gp.mass_mixer.output.weighted_sum[-1]
+        g.initial_velocities.direct.overheat_fraction = ip.overheat_fraction
+
+        # initial_forces
+        g.initial_forces.input.n_children = ip.n_lambdas
+        g.initial_forces.direct.shape = ip.structure_a.positions.shape
+
+        # run_lambda_points - initialize
+        g.run_lambda_points.input.n_children = ip.n_lambdas
+
+        # run_lambda_points - verlet_positions
+        g.run_lambda_points.direct.time_step = ip.time_step
+        g.run_lambda_points.direct.temperature = ip.temperature
+        g.run_lambda_points.direct.temperature_damping_timescale = ip.temperature_damping_timescale
+        g.run_lambda_points.direct.structure_a = ip.structure_a
+        g.run_lambda_points.direct.structure_b = ip.structure_b
+
+        g.run_lambda_points.broadcast.velocities = gp.initial_velocities.output.velocities[-1]
+        g.run_lambda_points.broadcast.forces = gp.initial_forces.output.zeros[-1]
+
+        # run_lambda_points - reflect
+        g.run_lambda_points.direct.use_reflection = ip.use_reflection
+        g.run_lambda_points.direct.cutoff_distance = ip.cutoff_distance
+
+        # run_lambda_points - calc_a
+        g.run_lambda_points.broadcast.project_path_a = gp.initialize_a_jobs.output.project_path[-1]
+        g.run_lambda_points.broadcast.job_name_a = gp.initialize_a_jobs.output.job_names[-1]
+
+        # run_lambda_points - calc_b
+        g.run_lambda_points.direct.project_path_b = gp.initialize_b_jobs.output.project_path[-1][-1]
+        g.run_lambda_points.broadcast.job_name_b = gp.initialize_b_jobs.output.job_names[-1]
+
+        # run_lambda_points - mix
+        g.run_lambda_points.broadcast.coupling_weights = gp.build_lambdas.output.lambda_pairs[-1]
+
+        # run_lambda_points - check_thermalized
+        g.run_lambda_points.direct.thermalization_steps = ip.thermalization_steps
+
+        # run_lambda_points - check_sampling_period
+        g.run_lambda_points.direct.sampling_period = ip.sampling_period
+
+        # run_lambda_points - average - does not need inputs
+
+        # run_lambda_points - clock
+        g.run_lambda_points.direct.n_steps = ip.n_steps
+
+        # clock
+        g.clock.input.add_counts = gp.run_lambda_points.output.clock[-1][-1]
+
+        # post_processing
+        g.post.input.lambda_pairs = gp.build_lambdas.output.lambda_pairs[-1]
+        g.post.input.n_samples = gp.run_lambda_points.output.n_samples[-1]
+        g.post.input.mean = gp.run_lambda_points.output.mean[-1]
+        g.post.input.std = gp.run_lambda_points.output.std[-1]
+        g.post.input.plot = ip.plot
+
+        self.set_graph_archive_clock(gp.clock.output.n_counts[-1])
+
+    def get_output(self):
+        gp = Pointer(self.graph)
+        o = Pointer(self.graph.run_lambda_points.output)
+        return {
+            'energy_pot_a': ~o.energy_pot_a[-1],
+            'energy_pot_b': ~o.energy_pot_b[-1],
+            'energy_kin': ~o.energy_kin[-1],
+            'positions': ~o.positions[-1],
+            'velocities': ~o.velocities[-1],
+            'forces': ~o.forces[-1],
+            'integrands': ~o.mean[-1],
+            'integrands_std': ~o.std[-1],
+            'integrands_n_samples': ~o.n_samples[-1],
+            'free_energy_change': ~gp.post.output.free_energy_change[-1]
+        }
+
+    def get_integrand(self):
+        o = Pointer(self.graph.run_lambda_points.output)
+        return ~o.mean[-1], ~o.std[-1] / np.sqrt(~o.n_samples[-1])
+
+
+class Transmutor(CompoundVertex):
+    """
+    A sub-protocol for ATILDParallel that is executed in parallel using ParallelList.
+    Couples two representations (`a` and `b`) and evolves according to mixed forces and masses.
+
+    Input:
+        project_path (str): Full path to the project holding the reference jobs.
+        job_name_a,b (str): Name of the reference job for representations `a` and `b`, respectively.
+        structure_a,b (Atoms): Identical structures except (optionally) the species.
+        coupling_weights (two-tuple-like): The respective weight of the two representations. Should probably sum to 1.
+        n_steps (int): How many steps to run MD for.
+        time_step (float): Velocity Verlet timestep.
+        temperature (float): MD temperature.
+        temperature_damping_timescale (float): Langevin thermostat timescale.
+        use_reflection (bool): Whether or not to use reflection when atoms stray too far from initial positions.
+        forces (numpy.ndarray): Initial forces to use.
+        velocities (numpy.ndarray): Initial velocities to use.
+        thermalization_steps (int): How long to run for before collecting data.
+        sampling_period (int): How long to go between recording data (to allow an uncorrelated structure to arise).
+    """
+    DefaultWhitelist = {
+    }
+
+    def define_vertices(self):
+        # Graph components
+        g = self.graph
+        g.mass_mixer = WeightedSum()
+        g.check_steps = IsGEq()
+        g.verlet_positions = VerletPositionUpdate()
+        g.reflect = SphereReflection()
+        g.calc_a = ExternalHamiltonian()
+        g.calc_b = ExternalHamiltonian()
+        g.write_a_forces = Overwrite()
+        g.write_b_forces = Overwrite()
+        g.mix = WeightedSum()
+        g.verlet_velocities = VerletVelocityUpdate()
+        g.check_thermalized = IsGEq()
+        g.check_sampling_period = ModIsZero()
+        g.difference = WeightedSum()
+        g.average = WelfordOnline()
+        # g.exponential = WelfordOnline()  # For tracking data necessary for free energy perturbation instead of TILD
+        g.clock = Counter()
+
+    def define_execution_flow(self):
+        # Execution flow
+        g = self.graph
+        g.make_pipeline(
+            g.mass_mixer,
+            g.check_steps, 'false',
+            g.verlet_positions,
+            g.reflect,
+            g.calc_a,
+            g.calc_b,
+            g.write_a_forces,
+            g.write_b_forces,
+            g.mix,
+            g.verlet_velocities,
+            g.check_thermalized, 'true',
+            g.check_sampling_period, 'true',
+            g.addition,
+            g.average,
+            # g.exponential,
+            g.clock,
+            g.check_steps
+        )
+        g.make_edge(g.check_thermalized, g.clock, 'false')
+        g.make_edge(g.check_sampling_period, g.clock, 'false')
+        g.starting_vertex = g.mass_mixer
+        g.restarting_vertex = g.check_steps
+
+    def define_information_flow(self):
+        # Data flow
+        g = self.graph
+        gp = Pointer(self.graph)
+        ip = Pointer(self.input)
+
+        # mass_mixer
+        g.mass_mixer.input.vectors = [
+            ip.structure_a.get_masses,
+            ip.structure_a.get_masses
+        ]
+        g.mass_mixer.input.weights = [0.5, 0.5]
+
+        # check_steps
+        g.check_steps.input.target = gp.clock.output.n_counts[-1]
+        g.check_steps.input.threshold = ip.n_steps
+
+        # verlet_positions
+        g.verlet_positions.input.masses = gp.mass_mixer.output.weighted_sum[-1]
+        g.verlet_positions.input.time_step = ip.time_step
+        g.verlet_positions.input.temperature = ip.temperature
+        g.verlet_positions.input.temperature_damping_timescale = ip.temperature_damping_timescale
+
+        g.verlet_positions.input.default.positions = ip.structure_a.positions
+        g.verlet_positions.input.default.velocities = ip.velocities
+        g.verlet_positions.input.default.forces = ip.forces
+
+        g.verlet_positions.input.positions = gp.reflect.output.positions[-1]
+        g.verlet_positions.input.velocities = gp.verlet_velocities.output.velocities[-1]
+        g.verlet_positions.input.forces = gp.mix.output.weighted_sum[-1]
+
+        # reflect
+        g.reflect.on = ip.use_reflection
+        g.reflect.input.default.previous_positions = ip.structure_a.positions
+        g.reflect.input.default.previous_velocities = ip.velocities
+
+        g.reflect.input.reference_positions = ip.structure_a.positions
+        g.reflect.input.previous_positions = gp.reflect.output.positions[-1]
+        g.reflect.input.previous_velocities = gp.verlet_velocities.output.velocities[-1]
+        g.reflect.input.positions = gp.verlet_positions.output.positions[-1]
+        g.reflect.input.velocities = gp.verlet_positions.output.velocities[-1]
+
+        g.reflect.input.cell = ip.structure_a.cell.array
+        g.reflect.input.pbc = ip.structure_a.pbc
+        g.reflect.input.cutoff_distance = ip.cutoff_distance
+
+        # calc_a
+        g.calc_a.input.project_path = ip.project_path
+        g.calc_a.input.job_name = ip.job_name_a
+        g.calc_a.input.structure = ip.structure_a
+        g.calc_a.input.cell = ip.structure_a.cell.array
+        g.calc_a.input.positions = gp.reflect.output.positions[-1]
+
+        # calc_b
+        g.calc_b.input.project_path = ip.project_path
+        g.calc_b.input.job_name = ip.job_name_b
+        g.calc_b.input.structure = ip.structure_b
+        g.calc_b.input.cell = ip.structure_b.cell.array
+        g.calc_b.input.positions = gp.reflect.output.positions[-1]
+
+        # mix
+        g.mix.input.vectors = [
+            gp.calc_a.output.forces[-1],
+            gp.calc_b.output.forces[-1]
+        ]
+        g.mix.input.weights = ip.coupling_weights
+
+        # verlet_velocities
+        g.verlet_velocities.input.masses = gp.mass_mixer.output.weighted_sum[-1]
+        g.verlet_velocities.input.time_step = ip.time_step
+        g.verlet_velocities.input.temperature = ip.temperature
+        g.verlet_velocities.input.temperature_damping_timescale = ip.temperature_damping_timescale
+
+        g.verlet_velocities.input.velocities = gp.reflect.output.velocities[-1]
+        g.verlet_velocities.input.forces = gp.mix.output.weighted_sum[-1]
+
+        # check_thermalized
+        g.check_thermalized.input.target = gp.clock.output.n_counts[-1]
+        g.check_thermalized.input.threshold = ip.thermalization_steps
+
+        # check_sampling_period
+        g.check_sampling_period.input.target = gp.clock.output.n_counts[-1]
+        g.check_sampling_period.input.default.mod = ip.sampling_period
+
+        # addition
+        g.difference.input.vectors = [
+            gp.calc_a.output.energy_pot[-1],
+            gp.calc_b.output.energy_pot[-1]
+        ]
+        g.difference.input.weights = [-1, 1]
+
+        # average
+        g.average.input.sample = gp.addition.output.weighted_sum[-1]
+
+        # exponential
+        # TODO
+
+        self.set_graph_archive_clock(gp.clock.output.n_counts[-1])
+
+    def get_output(self):
+        gp = Pointer(self.graph)
+        return {
+            'energy_pot_a': ~gp.calc_a.output.energy_pot[-1],
+            'energy_pot_a': ~gp.calc_b.output.energy_pot[-1],
+            'energy_kin': ~gp.verlet_velocities.output.energy_kin[-1],
+            'positions': ~gp.reflect.output.positions[-1],
+            'velocities': ~gp.verlet_velocities.output.velocities[-1],
+            'forces': ~gp.mix.output.weighted_sum[-1],
+            'clock': ~gp.clock.output.n_counts[-1],
+            'TI_mean': ~gp.average.output.mean[-1],
+            'TI_std': ~gp.average.output.std[-1],
+            'FEP_mean': ~gp.exponential.output.mean[-1],
+            'FEP_std': ~gp.exponential.output.std[-1],
+            'n_samples': ~gp.average.output.n_samples[-1]
+        }
+
+
+class ProtoATILDParallel(Protocol, ATILDParallel, ABC):
+    pass
