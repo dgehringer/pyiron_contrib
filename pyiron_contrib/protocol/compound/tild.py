@@ -1506,8 +1506,6 @@ class Transmutor(CompoundVertex):
         g.reflect = SphereReflection()
         g.calc_a = ExternalHamiltonian()
         g.calc_b = ExternalHamiltonian()
-        g.write_a_forces = Overwrite()
-        g.write_b_forces = Overwrite()
         g.mix = WeightedSum()
         g.verlet_velocities = VerletVelocityUpdate()
         g.check_thermalized = IsGEq()
@@ -1527,8 +1525,6 @@ class Transmutor(CompoundVertex):
             g.reflect,
             g.calc_a,
             g.calc_b,
-            g.write_a_forces,
-            g.write_b_forces,
             g.mix,
             g.verlet_velocities,
             g.check_thermalized, 'true',
