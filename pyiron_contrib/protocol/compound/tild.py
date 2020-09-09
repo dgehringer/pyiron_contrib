@@ -1624,7 +1624,7 @@ class Transmutor(CompoundVertex):
         g.check_sampling_period.input.target = gp.clock.output.n_counts[-1]
         g.check_sampling_period.input.default.mod = ip.sampling_period
 
-        # addition
+        # difference
         g.difference.input.vectors = [
             gp.calc_a.output.energy_pot[-1],
             gp.calc_b.output.energy_pot[-1]
@@ -1632,7 +1632,7 @@ class Transmutor(CompoundVertex):
         g.difference.input.weights = [-1, 1]
 
         # average
-        g.average.input.sample = gp.addition.output.weighted_sum[-1]
+        g.average.input.sample = gp.difference.output.weighted_sum[-1]
 
         # exponential
         # TODO
