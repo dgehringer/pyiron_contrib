@@ -1643,7 +1643,7 @@ class Transmutor(CompoundVertex):
         gp = Pointer(self.graph)
         return {
             'energy_pot_a': ~gp.calc_a.output.energy_pot[-1],
-            'energy_pot_a': ~gp.calc_b.output.energy_pot[-1],
+            'energy_pot_b': ~gp.calc_b.output.energy_pot[-1],
             'energy_kin': ~gp.verlet_velocities.output.energy_kin[-1],
             'positions': ~gp.reflect.output.positions[-1],
             'velocities': ~gp.verlet_velocities.output.velocities[-1],
