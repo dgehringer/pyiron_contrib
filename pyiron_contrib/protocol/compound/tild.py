@@ -1420,11 +1420,11 @@ class ATILDParallel(TILDParent):
         g.run_lambda_points.direct.cutoff_distance = ip.cutoff_distance
 
         # run_lambda_points - calc_a
-        g.run_lambda_points.broadcast.project_path_a = gp.initialize_a_jobs.output.project_path[-1][-1]
+        g.run_lambda_points.broadcast.project_path_a = gp.initialize_a_jobs.output.project_path[-1]
         g.run_lambda_points.broadcast.job_name_a = gp.initialize_a_jobs.output.job_names[-1]
 
         # run_lambda_points - calc_b
-        g.run_lambda_points.broadcast.project_path_b = gp.initialize_b_jobs.output.project_path[-1][-1]
+        g.run_lambda_points.broadcast.project_path_b = gp.initialize_b_jobs.output.project_path[-1]
         g.run_lambda_points.broadcast.job_name_b = gp.initialize_b_jobs.output.job_names[-1]
 
         # run_lambda_points - mix
