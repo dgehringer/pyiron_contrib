@@ -1533,7 +1533,7 @@ class Transmutor(CompoundVertex):
             g.verlet_velocities,
             g.check_thermalized, 'true',
             g.check_sampling_period, 'true',
-            g.addition,
+            g.difference,
             g.average,
             # g.exponential,
             g.clock,
