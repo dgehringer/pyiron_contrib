@@ -1649,10 +1649,10 @@ class Transmutor(CompoundVertex):
             'velocities': ~gp.verlet_velocities.output.velocities[-1],
             'forces': ~gp.mix.output.weighted_sum[-1],
             'clock': ~gp.clock.output.n_counts[-1],
-            'TI_mean': ~gp.average.output.mean[-1],
-            'TI_std': ~gp.average.output.std[-1],
-            'FEP_mean': ~gp.exponential.output.mean[-1],
-            'FEP_std': ~gp.exponential.output.std[-1],
+            'mean': ~gp.average.output.mean[-1],  # TI mean
+            'std': ~gp.average.output.std[-1],  # TI std
+            # 'FEP_mean': ~gp.exponential.output.mean[-1],
+            # 'FEP_std': ~gp.exponential.output.std[-1],
             'n_samples': ~gp.average.output.n_samples[-1]
         }
 
