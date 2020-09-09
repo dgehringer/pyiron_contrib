@@ -18,3 +18,4 @@ JOB_CLASS_DICT['ProtoVacancyTILDParallel'] = 'pyiron_contrib.protocol.compound.t
 JOB_CLASS_DICT['ProtoStringEvolution'] = 'pyiron_contrib.protocol.compound.fts'
 JOB_CLASS_DICT['ProtoStringEvolutionParallel'] = 'pyiron_contrib.protocol.compound.fts'
 JOB_CLASS_DICT['ImageJob'] = 'pyiron_contrib.image.job'
+JOB_CLASS_DICT['ProtoATILDParallel'] = 'pyiron_contrib.protocol.compound.tild'
