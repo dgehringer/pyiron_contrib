@@ -1480,7 +1480,7 @@ class Transmutor(CompoundVertex):
     Couples two representations (`a` and `b`) and evolves according to mixed forces and masses.
 
     Input:
-        project_path (str): Full path to the project holding the reference jobs.
+        project_path_a,b (str): Full paths to the projects holding the reference jobs.
         job_name_a,b (str): Name of the reference job for representations `a` and `b`, respectively.
         structure_a,b (Atoms): Identical structures except (optionally) the species.
         coupling_weights (two-tuple-like): The respective weight of the two representations. Should probably sum to 1.
@@ -1591,14 +1591,14 @@ class Transmutor(CompoundVertex):
         g.reflect.input.cutoff_distance = ip.cutoff_distance
 
         # calc_a
-        g.calc_a.input.project_path = ip.project_path
+        g.calc_a.input.project_path = ip.project_path_a
         g.calc_a.input.job_name = ip.job_name_a
         g.calc_a.input.structure = ip.structure_a
         g.calc_a.input.cell = ip.structure_a.cell.array
         g.calc_a.input.positions = gp.reflect.output.positions[-1]
 
         # calc_b
-        g.calc_b.input.project_path = ip.project_path
+        g.calc_b.input.project_path = ip.project_path_b
         g.calc_b.input.job_name = ip.job_name_b
         g.calc_b.input.structure = ip.structure_b
         g.calc_b.input.cell = ip.structure_b.cell.array
