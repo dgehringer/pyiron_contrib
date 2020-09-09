@@ -16,6 +16,7 @@ from pyiron_contrib.protocol.primitive.one_state import Counter, BuildMixingPair
     WelfordOnline, Zeros
 from pyiron_contrib.protocol.primitive.two_state import IsGEq, ModIsZero
 from pyiron_contrib.protocol.primitive.fts_vertices import PositionsRunningAverage
+from uncertainties.unumpy import uarray
 
 from scipy.constants import physical_constants
 
@@ -73,7 +74,12 @@ class TILDParent(CompoundVertex, ABC):
         return fig, ax
 
     def get_free_energy_change(self):
-        return np.trapz(x=self.get_lambdas(), y=self.get_integrand()[0])
+        """
+        Performs midpoint numeric integration.
+
+        Note: uncertainties are only statistical and do not include discretization.
+        """
+        return np.trapz(x=self.get_lambdas(), y=uarray(self.get_integrand()))
 
 
 class HarmonicTILD(TILDParent):
