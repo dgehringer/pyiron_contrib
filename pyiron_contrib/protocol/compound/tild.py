@@ -1378,7 +1378,7 @@ class ATILDParallel(TILDParent):
         # mass_mixer
         g.mass_mixer.input.vectors = [
             ip.structure_a.get_masses,
-            ip.structure_a.get_masses
+            ip.structure_b.get_masses
         ]
         g.mass_mixer.input.weights = [0.5, 0.5]
 
