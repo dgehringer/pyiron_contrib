@@ -429,6 +429,7 @@ class CompoundVertex(Vertex): #, PyironJobTypeRegistry):
                                                                   type(self.graph.active_vertex).__name__))
                 self.graph.step()
             self.vertex_processing.fire(self.graph.active_vertex)
+            print("{} executing {}".format(self.vertex_name, self.graph.active_vertex.vertex_name))
             self.graph.active_vertex.execute()
             self.vertex_processed.fire(self.graph.active_vertex)
             self.graph.step()
