@@ -1356,7 +1356,7 @@ class ATILDParallel(TILDParent):
             g.mass_mixer,
             g.initialize_a_jobs,
             g.initialize_b_jobs,
-            g.initial_velocities,
+            g.initial_velocities,  # TODO: Move into run_lambda_points
             g.initial_forces,
             g.run_lambda_points,
             g.clock,
