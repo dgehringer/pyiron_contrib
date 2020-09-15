@@ -1307,6 +1307,8 @@ class ATILDParallel(TILDParent):
         ref_job_full_path_a,b (str): Reference representations to use.
         structure_a,b (Atoms): Identical (except for, optionally, species) structures for the representations.
         n_lambdas (int): How many steps to take between one representation and the other (including endpoints).
+        cutoff_distance (float): How far to stray from your initial site before getting reflected. Half the NN distance
+            is typically pretty reasonable.
         [a bunch more that have default values]: Stuff.
     """
     DefaultWhitelist = {
