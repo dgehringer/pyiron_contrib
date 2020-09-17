@@ -1328,10 +1328,8 @@ class ATILDParallel(TILDParent):
         id_.sleep_time = 0
         id_.energy_kin = None
         id_.custom_lambdas = None
-        id_.force_constants = None
-        id_.spring_constant = None
         id_.fix_com = True
-        id_.use_reflection = True
+        id_.use_reflection = False
         # TODO: Need more than input and default, but rather access order, to work without reflection...
         id_.plot = False
         id_.ensure_iterable_mask = True
