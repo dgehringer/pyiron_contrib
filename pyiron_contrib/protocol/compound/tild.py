@@ -1329,7 +1329,6 @@ class ATILDParallel(TILDParent):
         id_.energy_kin = None
         id_.custom_lambdas = None
         id_.fix_com = True
-        id_.use_reflection = False
         # TODO: Need more than input and default, but rather access order, to work without reflection...
         id_.plot = False
         id_.ensure_iterable_mask = True
@@ -1415,10 +1414,6 @@ class ATILDParallel(TILDParent):
         g.run_lambda_points.broadcast.velocities = gp.initial_velocities.output.velocities[-1]
         g.run_lambda_points.broadcast.forces = gp.initial_forces.output.zeros[-1]
 
-        # run_lambda_points - reflect
-        g.run_lambda_points.direct.use_reflection = ip.use_reflection
-        g.run_lambda_points.direct.cutoff_distance = ip.cutoff_distance
-
         # run_lambda_points - calc_a
         g.run_lambda_points.broadcast.project_path_a = gp.initialize_a_jobs.output.project_path[-1]
         g.run_lambda_points.broadcast.job_name_a = gp.initialize_a_jobs.output.job_names[-1]
@@ -1503,7 +1498,6 @@ class Transmutor(CompoundVertex):
         g.mass_mixer = WeightedSum()
         g.check_steps = IsGEq()
         g.verlet_positions = VerletPositionUpdate()
-        g.reflect = SphereReflection()
         g.calc_a = ExternalHamiltonian()
         g.calc_b = ExternalHamiltonian()
         g.mix = WeightedSum()
@@ -1522,7 +1516,6 @@ class Transmutor(CompoundVertex):
             g.mass_mixer,
             g.check_steps, 'false',
             g.verlet_positions,
-            g.reflect,
             g.calc_a,
             g.calc_b,
             g.mix,
@@ -1567,38 +1560,23 @@ class Transmutor(CompoundVertex):
         g.verlet_positions.input.default.velocities = ip.velocities
         g.verlet_positions.input.default.forces = ip.forces
 
-        g.verlet_positions.input.positions = gp.reflect.output.positions[-1]
+        g.verlet_positions.input.positions = gp.verlet_positions.output.positions[-1]
         g.verlet_positions.input.velocities = gp.verlet_velocities.output.velocities[-1]
         g.verlet_positions.input.forces = gp.mix.output.weighted_sum[-1]
-
-        # reflect
-        g.reflect.on = ip.use_reflection
-        g.reflect.input.default.previous_positions = ip.structure_a.positions
-        g.reflect.input.default.previous_velocities = ip.velocities
-
-        g.reflect.input.reference_positions = ip.structure_a.positions
-        g.reflect.input.previous_positions = gp.reflect.output.positions[-1]
-        g.reflect.input.previous_velocities = gp.verlet_velocities.output.velocities[-1]
-        g.reflect.input.positions = gp.verlet_positions.output.positions[-1]
-        g.reflect.input.velocities = gp.verlet_positions.output.velocities[-1]
-
-        g.reflect.input.cell = ip.structure_a.cell.array
-        g.reflect.input.pbc = ip.structure_a.pbc
-        g.reflect.input.cutoff_distance = ip.cutoff_distance
 
         # calc_a
         g.calc_a.input.project_path = ip.project_path_a
         g.calc_a.input.job_name = ip.job_name_a
         g.calc_a.input.structure = ip.structure_a
         g.calc_a.input.cell = ip.structure_a.cell.array
-        g.calc_a.input.positions = gp.reflect.output.positions[-1]
+        g.calc_a.input.positions = gp.verlet_positions.output.positions[-1]
 
         # calc_b
         g.calc_b.input.project_path = ip.project_path_b
         g.calc_b.input.job_name = ip.job_name_b
         g.calc_b.input.structure = ip.structure_b
         g.calc_b.input.cell = ip.structure_b.cell.array
-        g.calc_b.input.positions = gp.reflect.output.positions[-1]
+        g.calc_b.input.positions = gp.verlet_positions.output.positions[-1]
 
         # mix
         g.mix.input.vectors = [
@@ -1613,7 +1591,7 @@ class Transmutor(CompoundVertex):
         g.verlet_velocities.input.temperature = ip.temperature
         g.verlet_velocities.input.temperature_damping_timescale = ip.temperature_damping_timescale
 
-        g.verlet_velocities.input.velocities = gp.reflect.output.velocities[-1]
+        g.verlet_velocities.input.velocities = gp.verlet_positions.output.velocities[-1]
         g.verlet_velocities.input.forces = gp.mix.output.weighted_sum[-1]
 
         # check_thermalized
@@ -1645,7 +1623,7 @@ class Transmutor(CompoundVertex):
             'energy_pot_a': ~gp.calc_a.output.energy_pot[-1],
             'energy_pot_b': ~gp.calc_b.output.energy_pot[-1],
             'energy_kin': ~gp.verlet_velocities.output.energy_kin[-1],
-            'positions': ~gp.reflect.output.positions[-1],
+            'positions': ~gp.verlet_positions.output.positions[-1],
             'velocities': ~gp.verlet_velocities.output.velocities[-1],
             'forces': ~gp.mix.output.weighted_sum[-1],
             'clock': ~gp.clock.output.n_counts[-1],
