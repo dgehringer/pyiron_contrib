@@ -137,7 +137,8 @@ class ListVertex(PrimitiveVertex):
         if self.children is not None:
             with hdf.open(group_name + "/children") as hdf5_server:
                 for n, child in enumerate(self.children):
-                    child.to_hdf(hdf=hdf5_server, group_name="child" + str(n))
+                    with hdf5_server.open("child{}".format(n)) as sub_hdf5_server:
+                        child.to_hdf(hdf=sub_hdf5_server, group_name=None)
 
     def from_hdf(self, hdf=None, group_name=None):
         super(ListVertex, self).from_hdf(hdf=hdf, group_name=group_name)
