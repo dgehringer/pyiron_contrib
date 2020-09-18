@@ -179,6 +179,14 @@ class GUI_Data:
     def __init__(self,project,msg=None):
         self.project = project
         self.msg = msg
+    def gui(self):
+        self.data_name = widgets.Text(
+            value='',
+            placeholder='Type something',
+            description='File Name:',
+            disabled=False
+        )
+        return self.data_name
 
 class GUI_Structure:
     def __init__(self, project, msg=None):
@@ -463,8 +471,8 @@ class GUI_CALC_ATOMISTIC:
         self.run_btn.style.button_color ='lightblue'
 
         self.job_type = widgets.Dropdown(
-            options = ['Lammps', 'Vasp', 'ImageJob'],
-            value='ImageJob',
+            options = ['Lammps', 'Vasp', ],
+            value='Lammps',
             description='Job Type:'
         )
 
@@ -544,17 +552,20 @@ class GUI_CALC_ATOMISTIC:
             job = self.project.load(self.job_name.value)
             self.set_job(job)
         else:
-            if self.job.status == 'finished':
-                self.struc = self.job.get_structure(self.view_gui.view.frame)
-                view = self.struc.plot3d()
-                self.view_gui = GUI_3D(view)
-            self.run_btn.style.button_color ='lightgreen'
-            self.run_btn.description = 'Run'
-            self.output.clear_output()
-            with self.output:
-                print ('frame: ', self.view_gui.view.frame, self.calc_opt.selected_index)
-                display(self.view_gui.gui())  
-                # print ("test: ", self.job_name.value, pr.list_nodes(), self.job_name.value in pr.list_nodes(), self.run_btn.style.button_color) 
+            try:
+                if self.job.status == 'finished':
+                    self.struc = self.job.get_structure(self.view_gui.view.frame)
+                    view = self.struc.plot3d()
+                    self.view_gui = GUI_3D(view)
+                self.run_btn.style.button_color ='lightgreen'
+                self.run_btn.description = 'Run'
+                self.output.clear_output()
+                with self.output:
+                    print ('frame: ', self.view_gui.view.frame, self.calc_opt.selected_index)
+                    display(self.view_gui.gui())
+                    # print ("test: ", self.job_name.value, pr.list_nodes(), self.job_name.value in pr.list_nodes(), self.run_btn.style.button_color)
+            except:
+                return
             
     def on_run_btn_clicked(self, b):
         if b.description == 'Run':
@@ -659,63 +670,102 @@ class GUI_PYIRON:
         self.msg.append_stdout('')
         self.msg.append_stderr('')
         self.clear_msg = widgets.Button(description='Clear')
+
         self.project=project
-        
+        # Values of the Atomistic pyiron as default
+        self.tabtitle=['Structure','Calculate','Explorer']
+        self.gui_structure = GUI_Structure(project=self.project, msg=self.msg)
+        self.gui_calcAtom = GUI_CALC_ATOMISTIC(msg=self.msg)
+        self.gui_input = self.gui_structure
+        self.gui_calc = self.gui_calcAtom
+        # Experimental tattile=['Data','Calculate','Explorer']
+        self.gui_data = GUI_Data(project=self.project, msg=self.msg)
+        self.gui_calcExp = GUI_CALC_EXPERIMENTAL(msg=self.msg)
+        self.gui_explorer = GUI_EXPLORER(project)
+
 
     def on_clear_msg_clicked(self, b):
         self.msg.clear_output()
 
-    def on_proceed_clicked(self):
-        if self.pyiron_type.value=="Atomistic":
-            self.tabtitle=['Structure','Calculate','Explorer']
-            self.gui_input = GUI_Structure(project=self.project, msg=self.msg)
-            self.gui_calc = GUI_CALC_ATOMISTIC(msg=self.msg)
-        elif self.pyiron_type.value=="Experimental":
-            self.tabtitle=['Data','Calculate','Explorer']
-            self.gui_input = GUI_Data(project=self.project, msg=self.msg)
-            self.gui_calc = GUI_CALC_EXPERIMENTAL(msg=self.msg)
-        else:
-            print("Err: This should be impossible")
-            exit()
-        self.gui_explorer = GUI_EXPLORER(project)
-        self.gui_work()
-
     def gui(self):
-        self.pyiron_type = widgets.Dropdown(
-            options = ['Atomistic', 'Experimental'],
-            description='Choose PyIron branch:'
-        )
-        run_btn = widgets.Button(description='Proceed')
-        run_btn.on_click(self.on_proceed_clicked())
-        return widgets.VBox([self.pyiron_type ,run_btn, widgets.HBox([self.msg, self.clear_msg])], layout={'border': '4px solid lightgray'})
+        py_tab = widgets.Tab()
+        py_tab.set_title(0, 'Atomistic')
+        py_tab.set_title(1, 'Experimental'),
+        py_tab.children = [self.gui_work_atom(), self.gui_work_exp()]
 
-    def gui_work(self):
+#       self.py_tab_children = [self.gui_work_atom,self.gui_work_exp]
+#
+#       def py_on_value_change(change):
+#           sel_old = change['old']
+#           sel_ind = change['new']
+#           if sel_ind == 0:
+#               print("set to atomistic")
+#               self.tabtitle = ['Structure','Calculate','Explorer']
+#               self.gui_input = self.gui_structure
+#               self.gui_calc = self.gui_calcAtom
+#           elif sel_ind == 1:
+#               print("set to experimental")
+#               self.tabtitle = ['Data', 'Calculate', 'Explorer']
+#               self.gui_input = self.gui_data
+#               self.gui_calc = self.gui_calcExp
+#
+#           self.msg.clear_output()
+#           with self.msg:
+#               print('sel: ', sel_old, sel_ind)
+#               # print (sel_ind, type(tab.children[sel_ind]), hasattr(self.tab_children[sel_ind], 'refresh'))
+#           self.py_tab_children[sel_ind].refresh()
+#           self.tab_children.refresh()
+#
+#       py_tab.observe(py_on_value_change, names='selected_index')
+        return widgets.VBox([py_tab, widgets.HBox([self.msg, self.clear_msg])], layout={'border': '4px solid lightgray'})
 
+    def gui_work_atom(self):
         tab = widgets.Tab()
-        for tabidx in len(self.tabtitle):
+        for tabidx in range(len(self.tabtitle)):
             tab.set_title(tabidx, self.tabtitle[tabidx])
-        #tab.children = [self.gui_explorer.gui()]
-        #tab.children = [self.gui_calc_experiment.gui(), self.gui_explorer.gui()]
-        tab.children = [self.gui_input.gui(), self.gui_calc.gui(), self.gui_explorer.gui()]
+        tab.children = [self.gui_structure.gui(), self.gui_calcAtom.gui(), self.gui_explorer.gui()]
 
-        #self.tab_children = [self.gui_explorer]
-        self.tab_children = [self.gui_input,self.gui_calc, self.gui_explorer]
-        #self.tab_children = [self.gui_structure, self.gui_calc, self.gui_explorer]
+        self.tab_children = [self.gui_structure, self.gui_calcAtom, self.gui_explorer]
 
         def on_value_change(change):
             sel_old = change['old']
             sel_ind = change['new']
             if sel_old == 0:
-                self.gui_calc.set_gui_input(self.gui_input)
+                self.gui_calc.set_gui_structure(self.gui_structure)
             elif sel_old == 1:
                 self.gui_calc.set_job(self.gui_explorer.job)
+            self.msg.clear_output()
+            with self.msg:
+                print('sel: ', sel_old, sel_ind)
+                # print (sel_ind, type(tab.children[sel_ind]), hasattr(self.tab_children[sel_ind], 'refresh'))
+            self.tab_children[sel_ind].refresh()
+
+        self.clear_msg.on_click(self.on_clear_msg_clicked)
+        tab.observe(on_value_change, names='selected_index')
+        return tab
+
+    def gui_work_exp(self):
+        tab = widgets.Tab()
+        for tabidx in range(len(self.tabtitle)):
+            tab.set_title(tabidx, self.tabtitle[tabidx])
+        tab.children = [self.gui_data.gui(), self.gui_calcExp.gui(), self.gui_explorer.gui()]
+
+        self.tab_children = [self.gui_data,self.gui_calcExp, self.gui_explorer]
+
+        def on_value_change(change):
+            sel_old = change['old']
+            sel_ind = change['new']
+#            if sel_old == 0:
+#                self.gui_calcExp   .set_gui_input(self.gui_input)
+            #el
+            if sel_old == 1:
+                self.gui_calcExp.set_job(self.gui_explorer.job)
             self.msg.clear_output()
             with self.msg:
                 print ('sel: ', sel_old, sel_ind)
                 # print (sel_ind, type(tab.children[sel_ind]), hasattr(self.tab_children[sel_ind], 'refresh'))
             self.tab_children[sel_ind].refresh()
             
-            
         self.clear_msg.on_click(self.on_clear_msg_clicked)
         tab.observe(on_value_change, names='selected_index')
-        return widgets.VBox([tab, widgets.HBox([self.msg, self.clear_msg])], layout={'border': '4px solid lightgray'})                                                 
+        return tab
