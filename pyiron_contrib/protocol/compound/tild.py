@@ -816,8 +816,6 @@ class HarmonicTILDParallel(HarmonicTILD):
         id_ = self.input.default
 
         id_.run_lambda_points_archive_whitelist = IODictionary()
-        id_.run_lambda_points_archive_whitelist.input = IODictionary()
-        id_.run_lambda_points_archive_whitelist.output = IODictionary()
 
     def define_vertices(self):
         # Graph components
@@ -915,6 +913,8 @@ class HarmonicTILDParallel(HarmonicTILD):
 
         # run_lambda_points - clock
         g.run_lambda_points.direct.n_steps = ip.n_steps
+
+        g.run_lambda_points.child_archive_whitelist = ip.run_lambda_points_archive_whitelist
 
         # clock
         g.clock.input.add_counts = gp.run_lambda_points.output.clock[-1][-1]
@@ -1342,8 +1342,6 @@ class ATILDParallel(TILDParent):
         id_.plot = False
         id_.ensure_iterable_mask = True
         id_.run_lambda_points_archive_whitelist = IODictionary()
-        id_.run_lambda_points_archive_whitelist.input = IODictionary()
-        id_.run_lambda_points_archive_whitelist.output = IODictionary()
 
     def define_vertices(self):
         # Graph components
@@ -1447,6 +1445,8 @@ class ATILDParallel(TILDParent):
 
         # run_lambda_points - clock
         g.run_lambda_points.direct.n_steps = ip.n_steps
+
+        g.run_lambda_points.child_archive_whitelist = ip.run_lambda_points_archive_whitelist
 
         # clock
         g.clock.input.add_counts = gp.run_lambda_points.output.clock[-1][-1]

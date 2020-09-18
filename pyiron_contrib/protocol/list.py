@@ -58,8 +58,6 @@ class ListVertex(PrimitiveVertex):
         self.direct = InputDictionary()
         self.broadcast = InputDictionary()
         self.child_archive_whitelist = IODictionary()
-        self.child_archive_whitelist.input = IODictionary()
-        self.child_archive_whitelist.output = IODictionary()
         self._n_history = None
         self.n_history = 1
 
