@@ -455,8 +455,7 @@ class CompoundVertex(Vertex): #, PyironJobTypeRegistry):
             group_name (str): HDF5 subgroup name - optional
         """
         super(CompoundVertex, self).to_hdf(hdf=hdf, group_name=group_name)
-        with hdf.open(group_name or self.vertex_name) as hdf5_server:
-            self.graph.to_hdf(hdf=hdf5_server, group_name="graph")
+        self.graph.to_hdf(hdf=hdf, group_name="graph")
 
     def from_hdf(self, hdf=None, group_name=None):
         """
