@@ -4,7 +4,7 @@
 
 from __future__ import print_function
 from pyiron_contrib.protocol.generic import Vertex, PrimitiveVertex, CompoundVertex
-from pyiron_contrib.protocol.utils import InputDictionary, Pointer
+from pyiron_contrib.protocol.utils import InputDictionary, Pointer, IODictionary
 import numpy as np
 import time
 from abc import abstractmethod
@@ -57,6 +57,9 @@ class ListVertex(PrimitiveVertex):
         self._initialized = False
         self.direct = InputDictionary()
         self.broadcast = InputDictionary()
+        self.child_archive_whitelist = IODictionary()
+        self.child_archive_whitelist.input = IODictionary()
+        self.child_archive_whitelist.output = IODictionary()
         self._n_history = None
         self.n_history = 1
 
@@ -96,6 +99,9 @@ class ListVertex(PrimitiveVertex):
         for key in list(self.broadcast.default.keys()):
             for n, child in enumerate(children):
                 setattr(child.input.default, key, getattr(Pointer(self.broadcast.default), key)[n])
+
+        for child in children:
+            child.archive.whitelist = IODictionary(self.child_archive_whitelist)
 
         self.children = children
         self._initialized = True
