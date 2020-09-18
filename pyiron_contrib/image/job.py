@@ -39,6 +39,8 @@ class ImageJob(GenericJob):
 
     Attributes:
         images (DistributingList): A list of `Image` objects.
+        input (InputList): Define filters for image processing
+        output (InputList): Provides information on the image properties
     """
 
     def __init__(self, project, job_name):
