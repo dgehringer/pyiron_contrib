@@ -44,8 +44,8 @@ class IODictionary(dict, LoggerMixin):
         'from_hdf'
     ]
 
-    def __init__(self, **kwargs):
-        super(IODictionary, self).__init__(**kwargs)
+    def __init__(self, *args, **kwargs):
+        super(IODictionary, self).__init__(*args, **kwargs)
 
     def __getattr__(self, item):
         if item in IODictionary._protected_members:
