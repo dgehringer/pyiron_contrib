@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from pyiron_contrib.protocol.generic import CompoundVertex, Protocol
 from pyiron_contrib.protocol.list import SerialList, ParallelList
-from pyiron_contrib.protocol.utils import Pointer
+from pyiron_contrib.protocol.utils import Pointer, IODictionary
 from pyiron_contrib.protocol.primitive.one_state import Counter, BuildMixingPairs, DeleteAtom, \
     ExternalHamiltonian, HarmonicHamiltonian, CreateJob, Overwrite, RandomVelocity, Slice, SphereReflection, \
     TILDPostProcess, Transpose, VerletPositionUpdate, VerletVelocityUpdate, WeightedSum, \
@@ -810,6 +810,15 @@ class HarmonicTILDParallel(HarmonicTILD):
     DefaultWhitelist = {
     }
 
+    def __init__(self, **kwargs):
+        super(HarmonicTILDParallel, self).__init__(**kwargs)
+
+        id_ = self.input.default
+
+        id_.run_lambda_points_archive_whitelist = IODictionary()
+        id_.run_lambda_points_archive_whitelist.input = IODictionary()
+        id_.run_lambda_points_archive_whitelist.output = IODictionary()
+
     def define_vertices(self):
         # Graph components
         g = self.graph
@@ -1332,6 +1341,9 @@ class ATILDParallel(TILDParent):
         # TODO: Need more than input and default, but rather access order, to work without reflection...
         id_.plot = False
         id_.ensure_iterable_mask = True
+        id_.run_lambda_points_archive_whitelist = IODictionary()
+        id_.run_lambda_points_archive_whitelist.input = IODictionary()
+        id_.run_lambda_points_archive_whitelist.output = IODictionary()
 
     def define_vertices(self):
         # Graph components
