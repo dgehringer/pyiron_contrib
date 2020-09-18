@@ -57,7 +57,7 @@ class ListVertex(PrimitiveVertex):
         self._initialized = False
         self.direct = InputDictionary()
         self.broadcast = InputDictionary()
-        self.child_archive_whitelist = IODictionary()
+        self.child_archive_whitelist_to_set = {}
         self._n_history = None
         self.n_history = 1
 
@@ -99,7 +99,7 @@ class ListVertex(PrimitiveVertex):
                 setattr(child.input.default, key, getattr(Pointer(self.broadcast.default), key)[n])
 
         for child in children:
-            child.archive.whitelist = IODictionary(self.child_archive_whitelist)
+            child.set_whitelist(self.child_archive_whitelist_to_set)
 
         self.children = children
         self._initialized = True
