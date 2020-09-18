@@ -99,7 +99,10 @@ class ListVertex(PrimitiveVertex):
                 setattr(child.input.default, key, getattr(Pointer(self.broadcast.default), key)[n])
 
         for child in children:
-            child.set_whitelist(self.child_archive_whitelist_to_set)
+            if isinstance(self.child_archive_whitelist_to_set, Pointer):
+                child.set_whitelist(~self.child_archive_whitelist_to_set)
+            else:
+                child.set_whitelist(self.child_archive_whitelist_to_set)
 
         self.children = children
         self._initialized = True
