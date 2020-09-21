@@ -3,6 +3,8 @@ import matplotlib.pylab as plt
 import ipywidgets as widgets
 from IPython.display import display
 from pyiron.atomistics.structure.periodic_table import PeriodicTable
+import os
+from glob import iglob
 
 
 class GUI_PSE:
@@ -32,6 +34,7 @@ class GUI_PSE:
         self._func(b)
         
     def gui(self):
+        print('start gui PSE')
         flatten = lambda l: [item for sublist in l for item in sublist] 
         return widgets.GridBox(flatten(self.pse_grid), 
                 layout=widgets.Layout(
@@ -42,6 +45,7 @@ class GUI_PSE:
 class GUI_PLOT:
     def __init__(self, job):
         self.job = job
+        self.project=job.project
 
         plt.ioff()
         self._ax=plt.gca()
@@ -109,7 +113,8 @@ class GUI_PLOT:
         return self.out_plt             
 
     def gui(self):
-        return self.tab    
+        print('start gui Plot')
+        return self.tab
 
 
 class GUI_3D:
@@ -165,6 +170,7 @@ class GUI_3D:
         self.view.frame = b['new']        
     
     def gui(self):
+        print('start gui', self)
         self.view.background = 'black'
         self.view._remote_call('setSize', target='Widget', args=[self.width, self.height])
         self.view.camera = 'orthographic'
@@ -178,15 +184,22 @@ class GUI_3D:
 class GUI_Data:
     def __init__(self,project,msg=None):
         self.project = project
+        self.filewidget=FileBrowser()
         self.msg = msg
+    def refresh(self):
+        pass
+    def _get_data(self):
+        self.data=self.filewidget.list_files()
     def gui(self):
-        self.data_name = widgets.Text(
-            value='',
-            placeholder='Type something',
-            description='File Name:',
-            disabled=False
-        )
-        return self.data_name
+        print('start gui', self)
+        self.filebrws = self.filewidget.widget()
+#       self.data_name = widgets.Text(
+#           value='',
+#           placeholder='Type something',
+#           description='File Name:',
+#           disabled=False
+#       )
+        return self.filebrws
 
 class GUI_Structure:
     def __init__(self, project, msg=None):
@@ -226,6 +239,7 @@ class GUI_Structure:
         self.refresh()    
         
     def gui(self):
+        print('start gui', self)
         return widgets.HBox([
             widgets.VBox([self.el1_btn, self.repeat_drp, self.cubic_ckb, self.ortho_ckb]),  # , self.create_btn]), 
             self.output_plot3d, self._pse_gui.gui()])  
@@ -271,6 +285,7 @@ class PARAM_MD:
         ) 
         
     def gui(self):
+        print('start gui', self)
         self.temperature.observe(self.gui_calc.refresh, names='value')
         self.n_ionic_steps.observe(self.gui_calc.refresh, names='value')
         self.n_print.observe(self.gui_calc.refresh, names='value')
@@ -300,6 +315,7 @@ class PARAM_MIN:
         ) 
         
     def gui(self):
+        print('start gui', self)
         self.f_eps.observe(self.gui_calc.refresh, names='value')
         self.max_iter.observe(self.gui_calc.refresh, names='value')
         self.n_print.observe(self.gui_calc.refresh, names='value')
@@ -322,12 +338,84 @@ class PARAM_IMG:
         )
 
     def gui(self):
+        print('start gui', self)
         return widgets.VBox([self.f_eps], layout={'border': '1px solid lightgray'})
 
+# taken from  https://stackoverflow.com/questions/39495994/uploading-files-using-browse-button-in-jupyter-and-using-saving-them
+class FileBrowser(object):
+    #TODO:
+    # Refresh box2 if box 1 is refreshed (empty box)
+    # Allow for relative paths
+    def __init__(self):
+        self.path = os.getcwd()
+        self._update_files()
+        self.data=[]
+
+    def _update_files(self):
+        self.files = list()
+        self.dirs = list()
+        if(os.path.isdir(self.path)):
+            for f in iglob(self.path+'/*'):
+                if os.path.isdir(f):
+                    self.dirs.append(os.path.split(f)[1])
+                else:
+#                   self.files.append(f)
+                    self.files.append(os.path.split(f)[1])
+
+    def widget(self):
+        box = widgets.VBox()
+        box2=widgets.Text(description="Path")
+        button=widgets.Button(description='Set Path')
+        button2=widgets.Button(description="Choose File")
+        def on_click(b):
+            print("entered on_click: b=",b)
+            if b.description == 'Set Path':
+                self.path=box2.value
+                self.box2_value=box2.value
+                self._update_files()
+                self._update(box)
+            if b.description == 'Choose File':
+                print ('try to append:',self.box2_value)
+                for f in iglob(self.box2_value):
+                    print('append to self.data:',f)
+                    self.data.append(f)
+        self._update(box)
+        button.on_click(on_click)
+        button2.on_click(on_click)
+        return widgets.VBox([widgets.HBox([box2,button,button2]),box])
+    def list_files(self):
+        return self.data
+    def _update(self, box):
+
+        def on_click(b):
+            if b.description == '..':
+                self.path = os.path.split(self.path)[0]
+            else:
+                self.path = os.path.join(self.path, b.description)
+            self.box2_value=self.path
+            self._update_files()
+            self._update(box)
+
+        buttons = []
+        #if self.files:
+        button = widgets.Button(description='..', background_color='#d0d0ff')
+        button.on_click(on_click)
+        buttons.append(button)
+        for f in self.dirs:
+            button = widgets.Button(description=f, background_color='#d0d0ff')
+            button.on_click(on_click)
+            buttons.append(button)
+        for f in self.files:
+            button = widgets.Button(description=f)
+            button.on_click(on_click)
+            buttons.append(button)
+        box.children = tuple([widgets.HTML("<h2>%s</h2>" % (self.path,))] + buttons)
+
 class GUI_CALC_EXPERIMENTAL:
-    def __init__(self, msg=None):
+    def __init__(self,project, msg=None):
         self.msg = msg
         self.par_img=PARAM_IMG(self)
+        self.project = project
 
         calc_opt = widgets.Tab()
         calc_opt.set_title(0, 'ImageJob')
@@ -338,7 +426,12 @@ class GUI_CALC_EXPERIMENTAL:
         self.calc_opt = calc_opt
 
         self.output = widgets.Output(layout=widgets.Layout(width='50%', height='100%'))
-        self.job_type="ImageJob"
+
+        self.job_type= widgets.Dropdown(
+            options=["ImageJob"],
+            value="ImageJob",
+            description = "Job Type:"
+        )
         self.job_name = widgets.Text(
             value='',
             placeholder='Type something',
@@ -358,7 +451,7 @@ class GUI_CALC_EXPERIMENTAL:
         )
 
 
-        self.mask = self.multi_checkbox_widget(["img1","img2"])
+        self.mask = self.multi_checkbox_widget([])
             #= [w.description for w in widgets.children[1].children if w.value]
 
     def multi_checkbox_widget(self,descriptions):
@@ -379,17 +472,18 @@ class GUI_CALC_EXPERIMENTAL:
         self.run_btn.description = 'Delete'
         self.output.clear_output()
 
-    def set_gui_structure(self, gui_structure):
-        self.gui_structure = gui_structure
-        self.project = gui_structure.project
+#   def set_gui_structure(self, gui_structure):
+#       self.gui_structure = gui_structure
+#       self.project = gui_structure.project
 #       self.struc = gui_structure.structure
-        self.job_name.value = ""
-        self.refresh_job_name()
+#       self.job_name.value = ""
+#       self.refresh_job_name()
 
-        self.job = self.project.create_job(self.job_type, self.job_name.value)
+#       self.job = self.project.create_job(self.job_type, self.job_name.value)
 
     def refresh(self, job=None, *args):
-        pass
+        self.refresh_input()
+        self.refresh_job_name()
 
     def refresh_job_name(self, *args):
         # self.output.clear_output()
@@ -400,6 +494,17 @@ class GUI_CALC_EXPERIMENTAL:
             self.run_btn.style.button_color = 'lightgreen'
             self.run_btn.description = 'Run'
             self.output.clear_output()
+
+    def refresh_input(self, *args):
+        if self.job_name.value == "":
+            self.job_name.value = 'DummyJobNamePleaseChange'
+
+        self.job = self.project.create_job(self.job_type.value, self.job_name.value)
+        #if self.job.status == 'finished':
+        #    self.set_job_params(self.job)
+        #else:
+        #    self.job.structure = self.struc
+        #    self.potential.options = self.job.list_potentials()
 
     def on_run_btn_clicked(self, b):
         if b.description == 'Run':
@@ -431,8 +536,9 @@ class GUI_CALC_EXPERIMENTAL:
             self.refresh_job_name()
 
     def gui(self):
+        print('start gui', self)
         # self.job_type.observe(self.refresh, names='value')
-        self.job_name.observe(self.refresh_job_name, names='value')
+        self.job_name.observe(self.refresh, names='value')
         # self.potential.observe(self.refresh, names='value')
 
         self.create_btn.on_click(self.refresh)
@@ -544,7 +650,9 @@ class GUI_CALC_ATOMISTIC:
             self.potential.options = self.job.list_potentials()     
         
     def refresh(self, job=None, *args):
-        pass
+        self.refresh_input()
+        self.refresh_job_name()
+        return
         
     def refresh_job_name(self, *args):     
         # self.output.clear_output()    
@@ -594,8 +702,9 @@ class GUI_CALC_ATOMISTIC:
             self.refresh_input()
                  
     def gui(self):
+        print('start gui', self)
         # self.job_type.observe(self.refresh, names='value')
-        self.job_name.observe(self.refresh_job_name, names='value')
+        self.job_name.observe(self.refresh, names='value')
         # self.potential.observe(self.refresh, names='value')
 
         self.create_btn.on_click(self.refresh)   
@@ -628,6 +737,7 @@ class GUI_EXPLORER:
             return self.node.get_structure(self.view.frame)
         
     def gui(self):
+        print('start gui', self)
         return widgets.HBox([
             widgets.VBox([self.groups, self.nodes]), 
             self.output])  
@@ -676,11 +786,11 @@ class GUI_PYIRON:
         self.tabtitle=['Structure','Calculate','Explorer']
         self.gui_structure = GUI_Structure(project=self.project, msg=self.msg)
         self.gui_calcAtom = GUI_CALC_ATOMISTIC(msg=self.msg)
-        self.gui_input = self.gui_structure
+#       self.gui_input = self.gui_structure
         self.gui_calc = self.gui_calcAtom
         # Experimental tattile=['Data','Calculate','Explorer']
         self.gui_data = GUI_Data(project=self.project, msg=self.msg)
-        self.gui_calcExp = GUI_CALC_EXPERIMENTAL(msg=self.msg)
+        self.gui_calcExp = GUI_CALC_EXPERIMENTAL(project=self.project,msg=self.msg)
         self.gui_explorer = GUI_EXPLORER(project)
 
 
@@ -688,6 +798,7 @@ class GUI_PYIRON:
         self.msg.clear_output()
 
     def gui(self):
+        print('start gui', self)
         py_tab = widgets.Tab()
         py_tab.set_title(0, 'Atomistic')
         py_tab.set_title(1, 'Experimental'),
@@ -728,13 +839,16 @@ class GUI_PYIRON:
         self.tab_children = [self.gui_structure, self.gui_calcAtom, self.gui_explorer]
 
         def on_value_change(change):
+            print('Atom_tab_chaged')
             sel_old = change['old']
             sel_ind = change['new']
             if sel_old == 0:
                 self.gui_calc.set_gui_structure(self.gui_structure)
-            elif sel_old == 1:
-                self.gui_calc.set_job(self.gui_explorer.job)
+            elif (sel_old == 2 and self.gui_explorer.job != None):
+                if hasattr(self.gui_explorer.job,"project"):
+                    self.gui_calc.set_job(self.gui_explorer.job)
             self.msg.clear_output()
+            print('on change: self.tab_children[sel_ind]:',self.tab_children[sel_ind],sel_ind)
             with self.msg:
                 print('sel: ', sel_old, sel_ind)
                 # print (sel_ind, type(tab.children[sel_ind]), hasattr(self.tab_children[sel_ind], 'refresh'))
@@ -753,13 +867,16 @@ class GUI_PYIRON:
         self.tab_children = [self.gui_data,self.gui_calcExp, self.gui_explorer]
 
         def on_value_change(change):
+            print('Exp_tab_chaged')
             sel_old = change['old']
             sel_ind = change['new']
 #            if sel_old == 0:
 #                self.gui_calcExp   .set_gui_input(self.gui_input)
             #el
-            if sel_old == 1:
-                self.gui_calcExp.set_job(self.gui_explorer.job)
+            #if sel_old == 1:
+            if (sel_old == 2 and self.gui_explorer.job != None):
+                if hasattr(self.gui_explorer.job, "project"):
+                    self.gui_calcExp.set_job(self.gui_explorer.job)
             self.msg.clear_output()
             with self.msg:
                 print ('sel: ', sel_old, sel_ind)
