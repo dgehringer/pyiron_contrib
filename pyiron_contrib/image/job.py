@@ -36,7 +36,7 @@ class ImageJob(GenericJob):
     A job type for storing and processing image data.
 
     TODO: Consider allowing the `data` field of each image to be saved to hdf5...
-
+    TODO: Allow for a mask of len=1
     Attributes:
         images (DistributingList): A list of `Image` objects.
         input (InputList): Define filters for image processing
