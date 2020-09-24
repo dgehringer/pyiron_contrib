@@ -6,6 +6,7 @@ from IPython.display import display
 from pyiron.atomistics.structure.periodic_table import PeriodicTable
 import os
 from glob import iglob
+from pyiron_contrib.image.image import Image
 
 
 class GUI_PSE:
@@ -334,13 +335,13 @@ def get_generic_inp(job):
 
 # taken from  https://stackoverflow.com/questions/39495994/uploading-files-using-browse-button-in-jupyter-and-using-saving-them
 class FileBrowser(object):
-    #TODO:
-    # Refresh box2 if box 1 is refreshed (empty box)
-    # Allow for relative paths
     def __init__(self):
         self.path = os.getcwd()
-        self._update_files()
         self.data=[]
+        self.box2_value=self.path
+        self.output = widgets.Output(layout=widgets.Layout(width='50%', height='100%'))
+        self._update_files()
+
 
     def _update_files(self):
         self.files = list()
@@ -354,30 +355,78 @@ class FileBrowser(object):
                     self.files.append(os.path.split(f)[1])
 
     def widget(self):
-        box = widgets.VBox()
-        box2=widgets.Text(description="Path")
+        box = widgets.VBox(layout=widgets.Layout(width='50%', height='100%'))
+        box2=widgets.Text(description="(rel) Path")
         button=widgets.Button(description='Set Path')
+        button3=widgets.Button(description='Reset Path')
         button2=widgets.Button(description="Choose File")
         def on_click(b):
             #print("entered on_click: b=",b)
+            self.output.clear_output(True)
+            with self.output:
+                print('')
             if b.description == 'Set Path':
-                self.path=box2.value
-                self.box2_value=box2.value
+                path=self.path
+                if len(box2.value)==0:
+                    with self.output:
+                        print('No path given')
+                    return
+                elif box2.value[0] != '/':
+                    path=path+'/'+box2.value
+                else:
+                    path=box2.value
+                if os.path.exists(path):
+                    self.path=os.path.abspath(path)
+                else:
+                    box2.__init__(description="(rel) Path",value='')
+                    with self.output:
+                        print('No valid path')
+                    return
+                self.box2_value=path
                 self._update_files()
                 self._update(box)
+                box2.__init__(description="(rel) Path",value='')
+            if b.description == 'Reset Path':
+                self.path=os.getcwd()
+                self.box2_value = self.path
+                self._update_files()
+                self._update(box)
+                box2.__init__(description="(rel) Path", value='')
             if b.description == 'Choose File':
+                if len(box2.value) ==0:
+                    path=self.path
+                elif box2.value[0] != '/':
+                    path=self.box2_value+'/'+box2.value
+                else:
+                    path=box2.value
                 #print ('try to append:',self.box2_value)
-                for f in iglob(self.box2_value):
+                appendlist = []
+                for f in iglob(path):
                     #print('append to self.data:',f)
-                    self.data.append(f)
+                    if os.path.isfile(f):
+                        self.data.append(f)
+                        appendlist.append(f)
+                with self.output:
+                    if len(appendlist) > 0:
+                        print ('Loaded %i File(s):' %(len(appendlist)))
+                        for i in appendlist:
+                            print(i)
+                    else:
+                        print('No files chosen')
         self._update(box)
         button.on_click(on_click)
         button2.on_click(on_click)
-        return widgets.VBox([widgets.HBox([box2,button,button2]),box])
+        button3.on_click(on_click)
+        return widgets.VBox([widgets.HBox([box2,button,button3,button2]),widgets.HBox([box,self.output])])
     def list_data(self):
         return self.data
     def _update(self, box):
-
+        self.output.clear_output(True)
+        if len(self.files)+len(self.dirs)==0:
+            Display_file(self.path,self.output)
+        else:
+            with self.output:
+                print ('')
         def on_click(b):
             if b.description == '..':
                 self.path = os.path.split(self.path)[0]
@@ -400,7 +449,24 @@ class FileBrowser(object):
             button = widgets.Button(description=f)
             button.on_click(on_click)
             buttons.append(button)
-        box.children = tuple([widgets.HTML("<h2>%s</h2>" % (self.path,))] + buttons)
+        box.children = tuple([widgets.HTML("<h3>%s</h3>" % (self.path,))] + buttons)
+
+class Display_file():
+    def __init__(self,path,outwidget):
+        self.path=path
+        self.output=outwidget
+        _, filetype = os.path.splitext(path)
+        if filetype == '.tif' or  filetype == '.tiff':
+            self.display_tiff()
+        else:
+            with self.output:
+                print(path)
+    def display_tiff(self):
+        plt.ioff()
+        img=Image(self.path)
+        fig, ax =img.plot()
+        with self.output:
+            display(fig)
 
 class PARAM_IMG:
     #brightness filter
@@ -565,8 +631,10 @@ class GUI_CALC_EXPERIMENTAL:
             self.set_param_img(preview_mask)
             self.job.run()
             self.refresh_job_name()
+            plt.ioff()
+            fig, ax = self.job.plot(mask=preview_mask, subplots_kwargs={'figsize': (20, 12)})
             with self.output:
-                self.job.plot(mask=preview_mask, subplots_kwargs={'figsize': (20, 12)})
+                display(fig)
             self.msg.clear_output()
             with self.msg:
                 print('finished')
