@@ -3,6 +3,7 @@ import matplotlib.pylab as plt
 import ipywidgets as widgets
 from ipywidgets import interact
 from IPython.display import display
+import IPython.display as IPyDisplay
 from pyiron.atomistics.structure.periodic_table import PeriodicTable
 import os
 from glob import iglob
@@ -456,17 +457,35 @@ class Display_file():
         self.path=path
         self.output=outwidget
         _, filetype = os.path.splitext(path)
-        if filetype == '.tif' or  filetype == '.tiff':
+        if filetype.lower() in ['.tif','.tiff']:
             self.display_tiff()
+        elif filetype.lower() in ['.jpg','.jpeg','.png','.gif']:
+            self.display_img()
+        elif filetype.lower() in ['.txt']:
+            self.display_txt()
         else:
-            with self.output:
-                print(path)
+            self.diplay_default()
     def display_tiff(self):
         plt.ioff()
         img=Image(self.path)
         fig, ax =img.plot()
         with self.output:
             display(fig)
+    def display_txt(self):
+        with self.output:
+            with open(self.path) as f:
+                print(f.read(),end='')
+    def display_img(self):
+        with self.output:
+            display(IPyDisplay.Image(self.path))
+    def diplay_default(self):
+        try:
+            with self.output:
+                display(self.path)
+        except:
+            with self.output:
+                print(self.path)
+
 
 class PARAM_IMG:
     #brightness filter
