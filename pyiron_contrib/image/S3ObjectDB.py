@@ -1,14 +1,15 @@
 import boto3
 from botocore.client import Config
-from pyiron_base import PyironObject
+#from pyiron_base import PyironObject
 import os
 import json
 
-class S3ObjectDB(PyironObject):
-    #TODO: implement functions like in hdfio: create_group, remove_group, open, close, get, put (istead of upload)
+class S3ObjectDB(object):
+    #TODO: implement functions like in hdfio: create_group, remove_group, get, put,
     #      also include intrinsic functions __stuff__
     def __init__(self, project, config_file = None, config_json = None, group = ''):
-        self.project=project
+        self._project=project.copy()
+        self.history=[]
         config = {}
         if config_json is not None:
             config=config_json
@@ -28,7 +29,7 @@ class S3ObjectDB(PyironObject):
         bucket_name = config['bucket']
         # Now, the bucket object
         self.bucket = s3resource.Bucket(bucket_name)
-        self._set_group(group)
+        self.open(group)
 
     def print_bucket_info(self): 
         print('Bucket name: {}'.format(self.bucket.name))
@@ -43,7 +44,7 @@ class S3ObjectDB(PyironObject):
         groups = []
         group_path_len=len(self.group.split('/'))-1
         for obj in self._list_objects():
-            rel_obj_path_spl=obj.split('/')[group_path_len:]
+            rel_obj_path_spl=obj.key.split('/')[group_path_len:]
             if len(rel_obj_path_spl) > 1:
                 groups.append(rel_obj_path_spl[0])
         return groups
@@ -58,20 +59,41 @@ class S3ObjectDB(PyironObject):
         nodes = []
         group_path_len = len(self.group.split('/')) - 1
         for obj in self._list_objects():
-            rel_obj_path_spl = obj.split('/')[group_path_len:]
+            rel_obj_path_spl = obj.key.split('/')[group_path_len:]
             if len(rel_obj_path_spl) == 1:
                 nodes.append(rel_obj_path_spl[0])
         return nodes
 
-    def _set_group(self, group):
+    def list_all(self):
+        return {
+            "groups": self.list_groups(),
+            "nodes": self.list_nodes(),
+        }
+
+    def open(self, group):
         if len(group)==0:
             self.group = group
         elif group[-1]== '/':
             self.group = group
         else:
             self.group = group + '/'
-        
+        self.history.append(self.group)
+
+    def close(self):
+        if len(self.history) > 1:
+            del self.history[-1]
+        elif len(self.history) == 1:
+            self.history[0] = ""
+        else:
+            print("Err: no history")
+        self.group=self.history[-1]
+
     def upload(self,files):
+        """
+        Uploads files into the group of the RDS
+        Arguments:
+            :class:`list` : List of filenames to upload
+        """
         for file in files:
             [path,f]=os.path.split(file)
             def printBytes(x):
@@ -79,13 +101,23 @@ class S3ObjectDB(PyironObject):
             s = os.path.getsize(file)
             self.bucket.upload_file(
                 file,
-                self.group + f,
-                Callback=printBytes
+                self.group + f
             )
+    def download(self,files,targetpath="."):
+        """
+        Download files from current group to local file system (current directory)
+        Arguments:
+            :class:`list` : List of filenames in the RDS
+        """
+        for f in files:
+            filepath=os.path.join(targetpath,f.split("/")[-1])
+            print (filepath)
+            self.bucket.download_file(self.group+f,filepath)
+
     def _list_objects(self):
         l=[]
         for obj in self.bucket.objects.filter(Prefix=self.group):
-            l.append(obj.key)
+            l.append(obj)
         return l
 
     def print_fileinfo(self):
@@ -93,19 +125,30 @@ class S3ObjectDB(PyironObject):
         for obj in self.bucket.objects.filter(Prefix=self.group):
             print('{} {} {} bytes'.format(obj.key, obj.last_modified, obj.size))
 
-    def _list_all_files_of_bucket2(self):
+    def _list_all_files_of_bucket(self):
         for obj in self.bucket.objects.all():
             print('{} {} {} bytes'.format(obj.key, obj.last_modified, obj.size))
 
 
-    def _del_group(self,prefix=None):
+    def remove_group(self,prefix=None,debug=False):
         if prefix==None:
             prefix=self.group
-        print('\nDeleting all objects with sample prefix {}/{}.'.format(self.bucket.name, prefix))
+        if debug:
+            print('\nDeleting all objects with sample prefix {}/{}.'.format(self.bucket.name, prefix))
         delete_responses = self.bucket.objects.filter(Prefix=prefix).delete()
-        for delete_response in delete_responses:
-            for deleted in delete_response['Deleted']:
-                print('\t Deleted: {}'.format(deleted['Key']))
+        if debug:
+            for delete_response in delete_responses:
+                for deleted in delete_response['Deleted']:
+                    print('\t Deleted: {}'.format(deleted['Key']))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __repr__(self):
+        return str(self.list_all())
 
 """
 Some infos about the bucket object:
