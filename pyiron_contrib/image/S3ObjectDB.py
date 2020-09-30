@@ -5,10 +5,11 @@ import os
 import json
 
 class S3ObjectDB(object):
-    #TODO: implement functions like in hdfio: create_group, remove_group, get, put,
-    #      also include intrinsic functions __stuff__
     def __init__(self, project, config_file = None, config_json = None, group = ''):
         self._project=project.copy()
+        # Place to store the object ID from the pyiron database:
+        #TODO: implement properly
+        self.pyiron_metadata={"ID":"1"}
         self.history=[]
         config = {}
         if config_json is not None:
@@ -88,21 +89,27 @@ class S3ObjectDB(object):
             print("Err: no history")
         self.group=self.history[-1]
 
-    def upload(self,files):
+    def upload(self,files,metadata={}):
         """
-        Uploads files into the group of the RDS
+        Uploads files into the current group of the RDS
         Arguments:
             :class:`list` : List of filenames to upload
         """
+        meta={}
+        meta.update(self.pyiron_metadata)
+        meta.update(metadata)
         for file in files:
             [path,f]=os.path.split(file)
             def printBytes(x):
                 print('{} {}/{} bytes'.format(f, x, s))
             s = os.path.getsize(file)
+            # Upload file accepts extra_args: Dictionary with predefined keys. One key is Metadata
             self.bucket.upload_file(
                 file,
-                self.group + f
+                self.group + f,
+                { "Metadata": meta}
             )
+
     def download(self,files,targetpath="."):
         """
         Download files from current group to local file system (current directory)
@@ -113,6 +120,12 @@ class S3ObjectDB(object):
             filepath=os.path.join(targetpath,f.split("/")[-1])
             print (filepath)
             self.bucket.download_file(self.group+f,filepath)
+
+    def get_metadata(self,key):
+        return self.bucket.Object(self.group + key).metadata
+
+    def get(self,key):
+        return self.bucket.Object(self.group + key).get
 
     def _list_objects(self):
         l=[]
