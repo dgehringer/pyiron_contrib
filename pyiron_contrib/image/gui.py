@@ -336,11 +336,17 @@ def get_generic_inp(job):
 
 # taken from  https://stackoverflow.com/questions/39495994/uploading-files-using-browse-button-in-jupyter-and-using-saving-them
 class FileBrowser(object):
+    #ToDo: make path clickable -> jump to clicked Path (omit Set path, reset path)
+    #      Make text-field searchable / autocomplete? .
+    #      Make 'normal files' clickable with a different method > change color of button and store choises in var
+    #           for selecting multiple files.
+    #       Show Display for last clicked file
     def __init__(self):
         self.path = os.getcwd()
         self.data=[]
         self.box2_value=self.path
         self.output = widgets.Output(layout=widgets.Layout(width='50%', height='100%'))
+        self._clickedFiles=[]
         self._update_files()
 
 
@@ -356,11 +362,13 @@ class FileBrowser(object):
                     self.files.append(os.path.split(f)[1])
 
     def widget(self):
-        box = widgets.VBox(layout=widgets.Layout(width='50%', height='100%'))
-        box2=widgets.Text(description="(rel) Path")
-        button=widgets.Button(description='Set Path')
-        button3=widgets.Button(description='Reset Path')
-        button2=widgets.Button(description="Choose File")
+        self.pathbox = widgets.HBox(layout=widgets.Layout(width='100%', justify_content='flex-start'))
+        self.box = widgets.VBox(layout=widgets.Layout(width='50%', height='100%',justify_content='flex-start'))
+        self.box2=widgets.Text(description="(rel) Path")
+        button=widgets.Button(description='Set Path', tooltip="Sets current path to provided string.")
+        button2=widgets.Button(description="Choose File(s)",
+                               tooltip='Loads currently activated files and all files '+
+                                       'matching the provided string patten; wildcards allowed!')
         def on_click(b):
             #print("entered on_click: b=",b)
             self.output.clear_output(True)
@@ -368,38 +376,32 @@ class FileBrowser(object):
                 print('')
             if b.description == 'Set Path':
                 path=self.path
-                if len(box2.value)==0:
+                if len(self.box2.value)==0:
                     with self.output:
                         print('No path given')
                     return
-                elif box2.value[0] != '/':
-                    path=path+'/'+box2.value
+                elif self.box2.value[0] != '/':
+                    path=path+'/'+self.box2.value
                 else:
-                    path=box2.value
+                    path=self.box2.value
                 if os.path.exists(path):
                     self.path=os.path.abspath(path)
                 else:
-                    box2.__init__(description="(rel) Path",value='')
+                    self.box2.__init__(description="(rel) Path",value='')
                     with self.output:
                         print('No valid path')
                     return
                 self.box2_value=path
                 self._update_files()
-                self._update(box)
-                box2.__init__(description="(rel) Path",value='')
-            if b.description == 'Reset Path':
-                self.path=os.getcwd()
-                self.box2_value = self.path
-                self._update_files()
-                self._update(box)
-                box2.__init__(description="(rel) Path", value='')
-            if b.description == 'Choose File':
-                if len(box2.value) ==0:
+                self._update(self.box)
+                self.box2.__init__(description="(rel) Path",value='')
+            if b.description == 'Choose File(s)':
+                if len(self.box2.value) ==0:
                     path=self.path
-                elif box2.value[0] != '/':
-                    path=self.box2_value+'/'+box2.value
+                elif self.box2.value[0] != '/':
+                    path=self.box2_value+'/'+self.box2.value
                 else:
-                    path=box2.value
+                    path=self.box2.value
                 #print ('try to append:',self.box2_value)
                 appendlist = []
                 for f in iglob(path):
@@ -407,6 +409,9 @@ class FileBrowser(object):
                     if os.path.isfile(f):
                         self.data.append(f)
                         appendlist.append(f)
+                for f in self._clickedFiles:
+                    self.data.append(f)
+                    appendlist.append(f)
                 with self.output:
                     if len(appendlist) > 0:
                         print ('Loaded %i File(s):' %(len(appendlist)))
@@ -414,45 +419,86 @@ class FileBrowser(object):
                             print(i)
                     else:
                         print('No files chosen')
-        self._update(box)
+        self._update(self.box)
         button.on_click(on_click)
         button2.on_click(on_click)
-        button3.on_click(on_click)
-        return widgets.VBox([widgets.HBox([box2,button,button3,button2]),widgets.HBox([box,self.output])])
+        return widgets.VBox([widgets.HBox([self.box2,button,button2]),self.pathbox,widgets.HBox([self.box,self.output])])
+
     def list_data(self):
         return self.data
+
+    def _update_pathbox(self,box):
+        def on_click(b):
+            self.path = b.path
+            self.box2_value = self.path
+            self._update_files()
+            self._update(self.box)
+            self.box2.__init__(description="(rel) Path", value='')
+        buttons=[]
+        tmppath=self.path
+        tmppath_old=self.path+'/'
+        while tmppath != tmppath_old:
+            tmppath_old=tmppath
+            [tmppath,dir] = os.path.split(tmppath)
+            button=widgets.Button(description=dir+'/',layout=widgets.Layout(width='auto'))
+            button.style.button_color = '#DDDDAA'
+            button.path=tmppath_old
+            button.on_click(on_click)
+            buttons.append(button)
+        button=widgets.Button(icon="fa-home",layout=widgets.Layout(width='auto'))
+        button.style.button_color='#999999'
+        button.path=os.getcwd()
+        button.on_click(on_click)
+        buttons.append(button)
+        buttons.reverse()
+        box.children = tuple(buttons)
+
     def _update(self, box):
         self.output.clear_output(True)
-        if len(self.files)+len(self.dirs)==0:
-            Display_file(self.path,self.output)
-        else:
-            with self.output:
-                print ('')
         def on_click(b):
-            if b.description == '..':
-                self.path = os.path.split(self.path)[0]
-            else:
-                self.path = os.path.join(self.path, b.description)
+            self.path = os.path.join(self.path, b.description)
             self.box2_value=self.path
             self._update_files()
             self._update(box)
+        def on_click_file(b):
+            self.output.clear_output(True)
+            f=os.path.join(self.path, b.description)
+            Display_file(f,self.output)
+            if f in self._clickedFiles:
+                b.style.button_color = '#DDDDDD'
+                self._clickedFiles.remove(f)
+            else:
+                b.style.button_color = '#FFBBBB'
+                self._clickedFiles.append(f)
 
         buttons = []
         #if self.files:
-        button = widgets.Button(description='..', background_color='#d0d0ff')
-        button.on_click(on_click)
-        buttons.append(button)
+        #button = widgets.Button(description='..')
+        #button.style.button_color = '#9999FF'
+        #button.on_click(on_click)
+        #buttons.append(button)
         for f in self.dirs:
-            button = widgets.Button(description=f, background_color='#d0d0ff')
+            button = widgets.Button(description=f,icon="fa-folder",layout=widgets.Layout(width='min-content', justify_content='flex-start'))
+            button.style.button_color = '#9999FF'
             button.on_click(on_click)
             buttons.append(button)
         for f in self.files:
-            button = widgets.Button(description=f)
-            button.on_click(on_click)
+            button = widgets.Button(description=f,icon="fa-file-o",layout=widgets.Layout(width='min-content', justify_content='flex-start'))
+            if os.path.join(self.path,f) in self._clickedFiles:
+                button.style.button_color = '#FFBBBB'
+            else:
+                button.style.button_color = '#DDDDDD'
+            button.on_click(on_click_file)
             buttons.append(button)
-        box.children = tuple([widgets.HTML("<h3>%s</h3>" % (self.path,))] + buttons)
+        box.children = tuple(buttons)
+        self._update_pathbox(self.pathbox)
 
 class Display_file():
+    #TODO:
+    '''
+/home/nsiemer/pyiron.git/pyiron_contrib/pyiron_contrib/image/image.py:259: RuntimeWarning: More than 20 figures have been opened. Figures created through the pyplot interface (`matplotlib.pyplot.figure`) are retained until explicitly closed and may consume too much memory. (To control this warning, see the rcParam `figure.max_open_warning`).
+  fig, ax = plt.subplots(**subplots_kwargs)
+    '''
     def __init__(self,path,outwidget):
         self.path=path
         self.output=outwidget
