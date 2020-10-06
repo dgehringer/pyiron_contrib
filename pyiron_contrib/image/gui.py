@@ -8,6 +8,7 @@ from pyiron.atomistics.structure.periodic_table import PeriodicTable
 import os
 from glob import iglob
 from pyiron_contrib.image.image import Image
+from pyiron_contrib.image.S3ObjectDB import S3ObjectDB
 
 
 class GUI_PSE:
@@ -187,7 +188,7 @@ class GUI_3D:
 class GUI_Data:
     def __init__(self,project,msg=None):
         self.project = project
-        self.filewidget=FileBrowser()
+        self.filewidget=FileBrowser(self.project)
         self.msg = msg
     def refresh(self):
         pass
@@ -342,27 +343,35 @@ class FileBrowser(object):
     #           Need to abstract the file search method to cover local file system and S3
     #           Need upload method - upon choose files > upload them, ask for meta-data  >> Convert to own class <<
     #                                                                                   Needed for File upload to S3
-    def __init__(self):
+    def __init__(self,project):
+        self.project=project
         self.path = os.getcwd()
         self.data=[]
         self.box2_value=self.path
         self.output = widgets.Output(layout=widgets.Layout(width='50%', height='100%'))
         self._clickedFiles=[]
-        #self._data_access=
-        self.path_storage['','']
+        self.s3path="data"
+        self._data_access=S3ObjectDB(self.project,config_file="/home/nsiemer/pyiron/projects/config.json",group=self.s3path)
+        self.path_storage=['','data']
+        self.data_sys='local'
         self._update_files()
 
 
     def _update_files(self):
-        self.files = list()
-        self.dirs = list()
-        if(os.path.isdir(self.path)):
-            for f in iglob(self.path+'/*'):
-                if os.path.isdir(f):
-                    self.dirs.append(os.path.split(f)[1])
-                else:
-#                   self.files.append(f)
-                    self.files.append(os.path.split(f)[1])
+        if self.data_sys == "local":
+            self.files = list()
+            self.dirs = list()
+            if(os.path.isdir(self.path)):
+                for f in iglob(self.path+'/*'):
+                    if os.path.isdir(f):
+                        self.dirs.append(os.path.split(f)[1])
+                    else:
+#                       self.files.append(f)
+                        self.files.append(os.path.split(f)[1])
+        else:
+            self._data_access.open(self.path)
+            self.files = self._data_access.list_nodes()
+            self.dirs = self._data_access.list_groups()
 
     def widget(self):
         self.pathbox = widgets.HBox(layout=widgets.Layout(width='100%', justify_content='flex-start'))
@@ -373,13 +382,30 @@ class FileBrowser(object):
                                tooltip='Loads currently activated files and all files '+
                                        'matching the provided string patten; wildcards allowed!')
         button3=widgets.Button(description="Reset election")
-        file_sys_button=widgets.Button(description='S3',tooltio="Change to S3 Datastore")
+        file_sys_button=widgets.Button(description='S3',tooltip="Change to S3 Datastore")
         def on_sys_change(b):
+            self._clickedFiles = []
             if b.description == 'S3':
                 self.path_storage[0]=self.path
                 self.path=self.path_storage[1]
+                b.description='local'
+                self.data_sys='S3'
+                b.tooltip="Change to local Filesystem"
+                self._update_files()
+                self._update(self.box)
+                self.box2_value=self.path
+                return
+            if b.description == 'local':
+                self.path_storage[1]=self.path
+                self.path=self.path_storage[0]
+                b.description='S3'
+                self.data_sys='local'
+                b.tooltip="Change to S3 Datastore"
+                self._update_files()
+                self._update(self.box)
+                self.box2_value=self.path
+                return
 
-            if
         def on_click(b):
             #print("entered on_click: b=",b)
             self.output.clear_output(True)
@@ -395,7 +421,7 @@ class FileBrowser(object):
                     path=path+'/'+self.box2.value
                 else:
                     path=self.box2.value
-                if os.path.exists(path):
+                if os.path.exists(path) or self.data_sys == 'S3':
                     self.path=os.path.abspath(path)
                 else:
                     self.box2.__init__(description="(rel) Path",value='')
@@ -407,6 +433,8 @@ class FileBrowser(object):
                 self._update(self.box)
                 self.box2.__init__(description="(rel) Path",value='')
             if b.description == 'Choose File(s)':
+                if self.data_sys=='S3':
+                    return
                 if len(self.box2.value) ==0:
                     path=self.path
                 elif self.box2.value[0] != '/':
@@ -430,10 +458,10 @@ class FileBrowser(object):
                             print(i)
                     else:
                         print('No files chosen')
-
             if b.description == 'Reset election':
                self._clickedFiles=[]
                self._update(self.box)
+
         self._update(self.box)
         button.on_click(on_click)
         button2.on_click(on_click)
@@ -465,7 +493,10 @@ class FileBrowser(object):
             buttons.append(button)
         button=widgets.Button(icon="fa-home",layout=widgets.Layout(width='auto'))
         button.style.button_color='#999999'
-        button.path=os.getcwd()
+        if self.data_sys == 'local':
+            button.path=os.getcwd()
+        else:
+            button.path=self.s3path
         button.on_click(on_click)
         buttons.append(button)
         buttons.reverse()
@@ -479,9 +510,10 @@ class FileBrowser(object):
             self._update_files()
             self._update(box)
         def on_click_file(b):
-            self.output.clear_output(True)
             f=os.path.join(self.path, b.description)
-            Display_file(f,self.output)
+            if self.data_sys == 'local':
+                self.output.clear_output(True)
+                Display_file(f,self.output)
             if f in self._clickedFiles:
                 b.style.button_color = '#DDDDDD'
                 self._clickedFiles.remove(f)
