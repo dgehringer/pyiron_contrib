@@ -28,20 +28,20 @@ class GUI_PSE:
             w = widgets.Button(description=e, layout=widgets.Layout(width=self._width, height=self._height))
             w.on_click(self.refresh)
             self.pse_grid[p-1][g-1] = w
-            
+
     def on_click(self, func):
         self._func = func
-            
+
     def refresh(self, b):
-        self.description = b.description 
+        self.description = b.description
         self._func(b)
-        
+
     def gui(self):
         #print('start gui PSE')
-        flatten = lambda l: [item for sublist in l for item in sublist] 
-        return widgets.GridBox(flatten(self.pse_grid), 
+        flatten = lambda l: [item for sublist in l for item in sublist]
+        return widgets.GridBox(flatten(self.pse_grid),
                 layout=widgets.Layout(
-                    height='230px', 
+                    height='230px',
                     grid_template_columns="repeat({}, {})".format(np.max(self.group), self._width_sep)))
 
 
@@ -56,15 +56,15 @@ class GUI_PLOT:
 
         self.tab = widgets.Tab()
         titles = ['Animate', 'Energy', 'Temperature', 'Positions']
-        
+
         [self.tab.set_title(i, t) for i, t in enumerate(titles)]
         self.tab.children = len(self.tab._titles) * [self.plot_selected(None)]
-        self.tab.observe(self.plot_selected, type='change')   
+        self.tab.observe(self.plot_selected, type='change')
 
-    def plot_selected(self, b): 
+    def plot_selected(self, b):
         sel_index = self.tab.selected_index
         title = self.tab.get_title(sel_index)
-        return eval ('self.plot_{}()'.format(title)) 
+        return eval ('self.plot_{}()'.format(title))
 
     def plot_Animate(self):
         view = self.job.animate_structure()
@@ -72,8 +72,8 @@ class GUI_PLOT:
 
         self.out_plt.clear_output(wait=True)
         with self.out_plt:
-            display(view_gui.gui())  
-        return self.out_plt 
+            display(view_gui.gui())
+        return self.out_plt
 
     def plot_Temperature(self):
         ax, job = self._init_plot()
@@ -82,7 +82,7 @@ class GUI_PLOT:
         ax.set_ylabel('Temperature [K]')
         x = job['output/generic/time'][1:]
         ax.plot(x, job['output/generic/temperature'][1:])
-        return self.plot()           
+        return self.plot()
 
     def plot_Energy(self):
         ax, job = self._init_plot()
@@ -93,7 +93,7 @@ class GUI_PLOT:
         ax.plot(x, job['output/generic/energy_pot'][1:], label='E_pot')
         ax.plot(x, job['output/generic/energy_tot'][1:], label='E_tot')
         ax.legend()
-        return self.plot() 
+        return self.plot()
 
     def plot_Positions(self):
         ax, job = self._init_plot()
@@ -103,17 +103,17 @@ class GUI_PLOT:
         x = job['output/generic/time']
         y = job['output/generic/unwrapped_positions'][:,:,2]
         ax.plot(x, y)
-        return self.plot()  
+        return self.plot()
 
     def _init_plot(self):
         self._ax.clear()
-        return self._ax, self.job                  
+        return self._ax, self.job
 
     def plot(self):
         self.out_plt.clear_output(wait=True)
         with self.out_plt:
-            display(self._ax.figure)  
-        return self.out_plt             
+            display(self._ax.figure)
+        return self.out_plt
 
     def gui(self):
         #print('start gui Plot')
@@ -128,7 +128,7 @@ class GUI_3D:
         self.width = '{}px'.format(int(width))
         self.height = '{}px'.format(int(height))
         # print('max_frame: ', self.max_frame)
-        
+
         self.play = widgets.Play(
             value=0,
             min=0,
@@ -165,13 +165,13 @@ class GUI_3D:
 
     def refresh_view_opt(self, *args):
         self.view.clear_representations()
-        self.view.add_representation(self.view_option.value, 
+        self.view.add_representation(self.view_option.value,
             radius=float(self.view_radius.value)
-            )   
-           
+            )
+
     def refresh_play(self, b):
-        self.view.frame = b['new']        
-    
+        self.view.frame = b['new']
+
     def gui(self):
         #print('start gui', self)
         self.view.background = 'black'
@@ -179,8 +179,8 @@ class GUI_3D:
         self.view.camera = 'orthographic'
         if self.max_frame == 0:
             return widgets.VBox([self.view, widgets.HBox([self.view_option, self.view_radius], layout=widgets.Layout(width='400px')), self.view_index])
-        return widgets.VBox([self.view, widgets.HBox([self.play, self.slider])]) 
-    
+        return widgets.VBox([self.view, widgets.HBox([self.play, self.slider])])
+
     # def _repr_html_(self):
     #     return display(self.gui())
 
@@ -212,16 +212,16 @@ class GUI_Structure:
         self.project = project
         self.msg = msg
         self._pse_gui = GUI_PSE(width=30)
-        
+
         self.count = 0
-        self.create_btn = widgets.Button(description='Refresh') 
+        self.create_btn = widgets.Button(description='Refresh')
         # self.output_plot3d = widgets.Output(layout=widgets.Layout(width='50%', height='100%'))
         self.output_plot3d = widgets.Output()
         self.cubic_ckb = widgets.Checkbox(value=True, description='Cubic')
         self.ortho_ckb = widgets.Checkbox(value=False, description='Orthorombic')
 
         self.el1_btn = widgets.Button(description='Al', layout=widgets.Layout(width='50px', height='25px'))
-        self.el1_btn.on_click(self.set_el1_btn)   
+        self.el1_btn.on_click(self.set_el1_btn)
         # self.set_el1_btn(self.el1_btn)   # select this button to start with PSE input 
         self.set_el1_btn(None)   # select this button to start with PSE input        
 
@@ -242,14 +242,14 @@ class GUI_Structure:
 
     def refresh_el1(self, b):
         self.el1_btn.description = b.description
-        self.refresh()    
-        
+        self.refresh()
+
     def gui(self):
         #print('start gui', self)
         return widgets.HBox([
             widgets.VBox([self.el1_btn, self.repeat_drp, self.cubic_ckb, self.ortho_ckb]),  # , self.create_btn]), 
-            self.output_plot3d, self._pse_gui.gui()])  
-        
+            self.output_plot3d, self._pse_gui.gui()])
+
     def refresh(self, *args):
         self.msg.clear_output()
         with self.msg:
@@ -277,7 +277,7 @@ class GUI_Structure:
 class PARAM_MD:
     def __init__(self, GUI_CALC):
         self.gui_calc = GUI_CALC
-        
+
         self.temperature = widgets.IntSlider(description='Temperature: ', min=1, max=5000, step=10, value=500)
         self.n_ionic_steps = widgets.Dropdown(
             options= [int(10**i) for i in range(8)],
@@ -288,21 +288,21 @@ class PARAM_MD:
             options= [int(10**i) for i in range(6)],
             value=100,
             description='n_print:'
-        ) 
-        
+        )
+
     def gui(self):
         #print('start gui', self)
         self.temperature.observe(self.gui_calc.refresh, names='value')
         self.n_ionic_steps.observe(self.gui_calc.refresh, names='value')
         self.n_print.observe(self.gui_calc.refresh, names='value')
-        
+
         return widgets.VBox([self.temperature, self.n_ionic_steps, self.n_print], layout={'border': '1px solid lightgray'})
 
 
 class PARAM_MIN:
     def __init__(self, gui_calc):
         self.gui_calc = gui_calc
-    
+
         self.f_eps = widgets.Dropdown(
             options= [10**(-i) for i in range(5)],
             value=10**(-4),
@@ -318,16 +318,16 @@ class PARAM_MIN:
             options= [int(10**i) for i in range(6)],
             value=100,
             description='n_print:'
-        ) 
-        
+        )
+
     def gui(self):
         #print('start gui', self)
         self.f_eps.observe(self.gui_calc.refresh, names='value')
         self.max_iter.observe(self.gui_calc.refresh, names='value')
         self.n_print.observe(self.gui_calc.refresh, names='value')
-        
+
         return widgets.VBox([self.f_eps, self.max_iter, self.n_print], layout={'border': '1px solid lightgray'})
-        
+
 
 def get_generic_inp(job):
     j_dic = job['input/generic/data_dict']
@@ -336,11 +336,8 @@ def get_generic_inp(job):
 
 # taken from  https://stackoverflow.com/questions/39495994/uploading-files-using-browse-button-in-jupyter-and-using-saving-them
 class FileBrowser(object):
-    #ToDo: make path clickable -> jump to clicked Path (omit Set path, reset path)
+    #ToDo:
     #      Make text-field searchable / autocomplete? .
-    #      Make 'normal files' clickable with a different method > change color of button and store choises in var
-    #           for selecting multiple files.
-    #       Show Display for last clicked file
     def __init__(self):
         self.path = os.getcwd()
         self.data=[]
@@ -369,6 +366,7 @@ class FileBrowser(object):
         button2=widgets.Button(description="Choose File(s)",
                                tooltip='Loads currently activated files and all files '+
                                        'matching the provided string patten; wildcards allowed!')
+        button3=widgets.Button(description="Reset election")
         def on_click(b):
             #print("entered on_click: b=",b)
             self.output.clear_output(True)
@@ -419,10 +417,15 @@ class FileBrowser(object):
                             print(i)
                     else:
                         print('No files chosen')
+
+            if b.description == 'Reset election':
+               self._clickedFiles=[]
+               self._update(self.box)
         self._update(self.box)
         button.on_click(on_click)
         button2.on_click(on_click)
-        return widgets.VBox([widgets.HBox([self.box2,button,button2]),self.pathbox,widgets.HBox([self.box,self.output])])
+        button3.on_click(on_click)
+        return widgets.VBox([widgets.HBox([self.box2,button,button2,button3]),self.pathbox,widgets.HBox([self.box,self.output])])
 
     def list_data(self):
         return self.data
