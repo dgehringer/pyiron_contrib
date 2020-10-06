@@ -337,13 +337,19 @@ def get_generic_inp(job):
 # taken from  https://stackoverflow.com/questions/39495994/uploading-files-using-browse-button-in-jupyter-and-using-saving-them
 class FileBrowser(object):
     #ToDo:
-    #      Make text-field searchable / autocomplete? .
+    #       Make text-field searchable / autocomplete? .
+    #       Use S3 store to search for data  -  for now: download data into tmp_dir which is rm after some time?
+    #           Need to abstract the file search method to cover local file system and S3
+    #           Need upload method - upon choose files > upload them, ask for meta-data  >> Convert to own class <<
+    #                                                                                   Needed for File upload to S3
     def __init__(self):
         self.path = os.getcwd()
         self.data=[]
         self.box2_value=self.path
         self.output = widgets.Output(layout=widgets.Layout(width='50%', height='100%'))
         self._clickedFiles=[]
+        #self._data_access=
+        self.path_storage['','']
         self._update_files()
 
 
@@ -367,6 +373,13 @@ class FileBrowser(object):
                                tooltip='Loads currently activated files and all files '+
                                        'matching the provided string patten; wildcards allowed!')
         button3=widgets.Button(description="Reset election")
+        file_sys_button=widgets.Button(description='S3',tooltio="Change to S3 Datastore")
+        def on_sys_change(b):
+            if b.description == 'S3':
+                self.path_storage[0]=self.path
+                self.path=self.path_storage[1]
+
+            if
         def on_click(b):
             #print("entered on_click: b=",b)
             self.output.clear_output(True)
@@ -425,7 +438,9 @@ class FileBrowser(object):
         button.on_click(on_click)
         button2.on_click(on_click)
         button3.on_click(on_click)
-        return widgets.VBox([widgets.HBox([self.box2,button,button2,button3]),self.pathbox,widgets.HBox([self.box,self.output])])
+        file_sys_button.on_click(on_sys_change)
+        return widgets.VBox([widgets.HBox([file_sys_button,self.box2,button,button2,button3]),
+                             self.pathbox,widgets.HBox([self.box,self.output])])
 
     def list_data(self):
         return self.data
