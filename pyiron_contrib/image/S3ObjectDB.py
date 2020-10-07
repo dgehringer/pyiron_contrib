@@ -71,6 +71,26 @@ class S3ObjectDB(object):
             "nodes": self.list_nodes(),
         }
 
+    def is_dir(self,path):
+        if len(path)>1 and path[-1]!='/':
+            path=path+'/'
+        for obj in self._list_all_obj_of_bucket():
+            if path in obj.key:
+                if self.group+path in obj.key:
+                    return True
+                if path == obj.key[:len(path)]:
+                    return True
+
+    def is_file(self,path):
+        l=[]
+        for obj in self._list_all_obj_of_bucket():
+            l.append(obj.key)
+        if path in l:
+            return True
+        if self.group+path in l:
+            return True
+
+
     def open(self, group):
         if len(group)==0:
             self.group = group
@@ -138,8 +158,14 @@ class S3ObjectDB(object):
         for obj in self.bucket.objects.filter(Prefix=self.group):
             print('{} {} {} bytes'.format(obj.key, obj.last_modified, obj.size))
 
-    def _list_all_files_of_bucket(self):
+    def _list_all_obj_of_bucket(self):
+        l=[]
         for obj in self.bucket.objects.all():
+            l.append(obj)
+        return l
+
+    def print_obj_info(self,objlist):
+        for obj in objlist:
             print('{} {} {} bytes'.format(obj.key, obj.last_modified, obj.size))
 
 

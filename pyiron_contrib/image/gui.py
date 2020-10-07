@@ -412,23 +412,31 @@ class FileBrowser(object):
             with self.output:
                 print('')
             if b.description == 'Set Path':
-                path=self.path
+                if self.data_sys =='S3':
+                    path='/'+self.path
+                else:
+                    path=self.path
                 if len(self.box2.value)==0:
                     with self.output:
                         print('No path given')
                     return
                 elif self.box2.value[0] != '/':
+                    with self.output:
+                        print('current path=',path)
                     path=path+'/'+self.box2.value
                 else:
                     path=self.box2.value
-                if os.path.exists(path) or self.data_sys == 'S3':
+                # check path consistency:
+                if (self.data_sys == 'local' and self.path.exists(path) ):
                     self.path=os.path.abspath(path)
+                elif (self._data_access.is_dir(path[1:]) and self.data_sys == 'S3'):
+                    self.path=path[1:]
                 else:
                     self.box2.__init__(description="(rel) Path",value='')
                     with self.output:
                         print('No valid path')
                     return
-                self.box2_value=path
+                self.box2_value=self.path
                 self._update_files()
                 self._update(self.box)
                 self.box2.__init__(description="(rel) Path",value='')
