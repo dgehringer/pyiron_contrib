@@ -2,6 +2,7 @@ import boto3
 from botocore.client import Config
 #from pyiron_base import PyironObject
 import os
+import fnmatch
 import json
 
 class S3ObjectDB(object):
@@ -136,6 +137,8 @@ class S3ObjectDB(object):
         Arguments:
             :class:`list` : List of filenames in the RDS
         """
+        if not os.path.exists(targetpath):
+            os.mkdir(targetpath)
         for f in files:
             filepath=os.path.join(targetpath,f.split("/")[-1])
             print (filepath)
@@ -153,7 +156,7 @@ class S3ObjectDB(object):
             l.append(obj)
         return l
 
-    def print_fileinfo(self):
+    def print_fileinfos(self):
         # prints the filename, last modified date and size for _all_ files in the current group
         for obj in self.bucket.objects.filter(Prefix=self.group):
             print('{} {} {} bytes'.format(obj.key, obj.last_modified, obj.size))
@@ -162,6 +165,15 @@ class S3ObjectDB(object):
         l=[]
         for obj in self.bucket.objects.all():
             l.append(obj)
+        return l
+
+    def glob(self,path,relpath=False):
+        if relpath and  len(self.group) >0:
+            path=self.group+'/'+path
+        l=[]
+        for obj in self.bucket.objects.filter(Prefix=self.group):
+            if fnmatch.fnmatchcase(obj.key,path):
+                l.append(obj.key)
         return l
 
     def print_obj_info(self,objlist):
