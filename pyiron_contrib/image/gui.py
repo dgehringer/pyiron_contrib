@@ -350,9 +350,11 @@ class FileBrowser(object):
         self.box2_value=self.path
         self.output = widgets.Output(layout=widgets.Layout(width='50%', height='100%'))
         self._clickedFiles=[]
-        self.s3path="data"
+        self.s3path=""
+        # have a look at tempdir
+        self.temp_dir=self.path+'/.Tempdir'
         self._data_access=S3ObjectDB(self.project,config_file="/home/nsiemer/pyiron/projects/config.json",group=self.s3path)
-        self.path_storage=['','data']
+        self.path_storage=['','']
         self.data_sys='local'
         self._update_files()
 
@@ -382,10 +384,12 @@ class FileBrowser(object):
                                tooltip='Loads currently activated files and all files '+
                                        'matching the provided string patten; wildcards allowed!')
         button3=widgets.Button(description="Reset election")
-        file_sys_button=widgets.Button(description='S3',tooltip="Change to S3 Datastore")
+        file_sys_button=widgets.Button(description='RDM',tooltip="Change to Research Data Management System",
+                                       icon="fa-database",layout=widgets.Layout(width='auto'))
+        file_sys_button.style.button_color = '#FF8888'
         def on_sys_change(b):
             self._clickedFiles = []
-            if b.description == 'S3':
+            if b.description == 'RDM':
                 self.path_storage[0]=self.path
                 self.path=self.path_storage[1]
                 b.description='local'
@@ -398,9 +402,9 @@ class FileBrowser(object):
             if b.description == 'local':
                 self.path_storage[1]=self.path
                 self.path=self.path_storage[0]
-                b.description='S3'
+                b.description='RDM'
                 self.data_sys='local'
-                b.tooltip="Change to S3 Datastore"
+                b.tooltip="Change to Research Data Management System"
                 self._update_files()
                 self._update(self.box)
                 self.box2_value=self.path
@@ -442,11 +446,12 @@ class FileBrowser(object):
                 self.box2.__init__(description="(rel) Path",value='')
             if b.description == 'Choose File(s)':
                 if self.data_sys=='S3':
+                    self._download_and_choose()
                     return
                 if len(self.box2.value) ==0:
                     path=self.path
                 elif self.box2.value[0] != '/':
-                    path=self.box2_value+'/'+self.box2.value
+                    path=self.path+'/'+self.box2.value
                 else:
                     path=self.box2.value
                 #print ('try to append:',self.box2_value)
@@ -480,6 +485,33 @@ class FileBrowser(object):
 
     def list_data(self):
         return self.data
+
+    def _download_and_choose(self):
+        if len(self.box2.value) == 0:
+            path = self.path
+        elif self.box2.value[0] != '/':
+            path = self.path + '/' + self.box2.value
+        else:
+            with self.output:
+                print("Only relative paths supported")
+        appendlist = []
+        for f in self._data_access.glob(path):
+            appendlist.append(f)
+        for f in self._clickedFiles:
+            appendlist.append(f)
+        #appendlist has _full_ path in the bucket > download from top directory.
+        self._data_access.open("")
+        self._data_access.download(appendlist,targetpath=self.temp_dir)
+        self._data_access.close()
+        for f in iglob(self.temp_dir+'/*'):
+            self.data.append(f)
+        with self.output:
+            if len(appendlist) > 0:
+                print('Loaded %i File(s):' % (len(appendlist)))
+                for i in appendlist:
+                    print(i)
+            else:
+                print('No files chosen')
 
     def _update_pathbox(self,box):
         def on_click(b):
