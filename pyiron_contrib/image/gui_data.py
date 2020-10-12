@@ -5,6 +5,7 @@ import ipywidgets as widgets
 from IPython import display as IPyDisplay
 from IPython.core.display import display
 from matplotlib import pylab as plt
+import pandas
 
 from pyiron_contrib.image.S3ObjectDB import S3ObjectDB
 from pyiron_contrib.image.image import Image
@@ -26,6 +27,8 @@ class Display_file():
             self.display_img()
         elif filetype.lower() in ['.txt']:
             self.display_txt()
+        elif filetype.lower() in ['.csv']:
+            self.display_csv()
         else:
             self.diplay_default()
     def display_tiff(self):
@@ -38,6 +41,9 @@ class Display_file():
         with self.output:
             with open(self.path) as f:
                 print(f.read(),end='')
+    def display_csv(self):
+        with self.output:
+            display(pandas.read_csv(self.path))
     def display_img(self):
         with self.output:
             display(IPyDisplay.Image(self.path))
@@ -213,6 +219,11 @@ class FileBrowser(object):
     def list_data(self):
         return self.data
 
+    # TODO: convert to get Data object and use this instead:
+    # obj =  self._data_access.get(key)
+    # data = obj['Body'].read()  the content of the Body is erased!
+    # image = PIL.Image.open(io.BytesIO(data))
+    # np_data = np.array(image)   < This may be handled by the image job class as input!
     def _download_and_choose(self):
         if len(self.box2.value) == 0:
             path = self.path

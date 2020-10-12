@@ -148,7 +148,7 @@ class S3ObjectDB(object):
         return self.bucket.Object(self.group + key).metadata
 
     def get(self,key):
-        return self.bucket.Object(self.group + key).get
+        return self.bucket.Object(self.group + key).get()
 
     def _list_objects(self):
         l=[]
