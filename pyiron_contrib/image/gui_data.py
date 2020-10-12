@@ -10,28 +10,44 @@ from pyiron_contrib.image.S3ObjectDB import S3ObjectDB
 from pyiron_contrib.image.image import Image
 
 
-class GUI_Data:
-    def __init__(self,project,msg=None):
-        self.project = project
-        self.filewidget=FileBrowser(self.project)
-        self.msg = msg
-    def refresh(self):
-        pass
-    def _get_data(self):
-        self.data=self.filewidget.list_data()
-    def list_data(self):
-        self._get_data()
-        return self.data
-    def gui(self):
-        #print('start gui', self)
-        self.filebrws = self.filewidget.widget()
-#       self.data_name = widgets.Text(
-#           value='',
-#           placeholder='Type something',
-#           description='File Name:',
-#           disabled=False
-#       )
-        return self.filebrws
+class Display_file():
+    #TODO:
+    '''
+/home/nsiemer/pyiron.git/pyiron_contrib/pyiron_contrib/image/image.py:259: RuntimeWarning: More than 20 figures have been opened. Figures created through the pyplot interface (`matplotlib.pyplot.figure`) are retained until explicitly closed and may consume too much memory. (To control this warning, see the rcParam `figure.max_open_warning`).
+  fig, ax = plt.subplots(**subplots_kwargs)
+    '''
+    def __init__(self,path,outwidget):
+        self.path=path
+        self.output=outwidget
+        _, filetype = os.path.splitext(path)
+        if filetype.lower() in ['.tif','.tiff']:
+            self.display_tiff()
+        elif filetype.lower() in ['.jpg','.jpeg','.png','.gif']:
+            self.display_img()
+        elif filetype.lower() in ['.txt']:
+            self.display_txt()
+        else:
+            self.diplay_default()
+    def display_tiff(self):
+        plt.ioff()
+        img=Image(self.path)
+        fig, ax =img.plot()
+        with self.output:
+            display(fig)
+    def display_txt(self):
+        with self.output:
+            with open(self.path) as f:
+                print(f.read(),end='')
+    def display_img(self):
+        with self.output:
+            display(IPyDisplay.Image(self.path))
+    def diplay_default(self):
+        try:
+            with self.output:
+                display(self.path)
+        except:
+            with self.output:
+                print(self.path)
 
 
 class FileBrowser(object):
@@ -76,33 +92,45 @@ class FileBrowser(object):
     def widget(self):
         self.pathbox = widgets.HBox(layout=widgets.Layout(width='100%', justify_content='flex-start'))
         self.box = widgets.VBox(layout=widgets.Layout(width='50%', height='100%',justify_content='flex-start'))
-        self.box2=widgets.Text(description="(rel) Path")
+        self.box2=widgets.Text(description="(rel) Path",width='min-content')
         button=widgets.Button(description='Set Path', tooltip="Sets current path to provided string.")
-        button2=widgets.Button(description="Choose File(s)",
+        button2=widgets.Button(description="Choose File(s)",width='min-content',
                                tooltip='Loads currently activated files and all files '+
                                        'matching the provided string patten; wildcards allowed!')
-        button3=widgets.Button(description="Reset election")
-        file_sys_button=widgets.Button(description='RDM',tooltip="Change to Research Data Management System",
-                                       icon="fa-database",layout=widgets.Layout(width='auto'))
-        file_sys_button.style.button_color = '#FF8888'
+        button3=widgets.Button(description="Reset selection",width='min-content')
+        file_sys_button=widgets.Button(description='local',tooltip="Change to local filesystem",
+                                       icon="fa-database",layout=widgets.Layout(width='80px'),
+                                       style={'button_color': '#FF8888','font_weight': 'bold'})
+        file_sys_button2=widgets.Button(description='RDM',tooltip="Change to Research Data Management System",
+                                       icon="fa-database",layout=widgets.Layout(width='80px'),
+                                       style={'button_color': '#FFAAAA'})
         def on_sys_change(b):
-            self._clickedFiles = []
             if b.description == 'RDM':
+                if self.data_sys=='S3':
+                    return
+                self._clickedFiles = []
                 self.path_storage[0]=self.path
                 self.path=self.path_storage[1]
-                b.description='local'
+                b.style.button_color='#FF8888'
+                b.style.font_weight='bold'
+                file_sys_button.style.button_color='#FFAAAA'
+                file_sys_button.style.font_weight=''
                 self.data_sys='S3'
-                b.tooltip="Change to local Filesystem"
                 self._update_files()
                 self._update(self.box)
                 self.box2_value=self.path
                 return
             if b.description == 'local':
+                if self.data_sys=='local':
+                    return
+                self._clickedFiles = []
                 self.path_storage[1]=self.path
                 self.path=self.path_storage[0]
-                b.description='RDM'
+                b.style.button_color='#FF8888'
+                b.style.font_weight='bold'
+                file_sys_button2.style.button_color='#FFAAAA'
+                file_sys_button2.style.font_weight=''
                 self.data_sys='local'
-                b.tooltip="Change to Research Data Management System"
                 self._update_files()
                 self._update(self.box)
                 self.box2_value=self.path
@@ -178,7 +206,8 @@ class FileBrowser(object):
         button2.on_click(on_click)
         button3.on_click(on_click)
         file_sys_button.on_click(on_sys_change)
-        return widgets.VBox([widgets.HBox([file_sys_button,self.box2,button,button2,button3]),
+        file_sys_button2.on_click(on_sys_change)
+        return widgets.VBox([widgets.HBox([file_sys_button,file_sys_button2,self.box2,button,button2,button3]),
                              self.pathbox,widgets.HBox([self.box,self.output])])
 
     def list_data(self):
@@ -251,7 +280,7 @@ class FileBrowser(object):
             f=os.path.join(self.path, b.description)
             if self.data_sys == 'local':
                 self.output.clear_output(True)
-                Display_file(f,self.output)
+                Display_file(f, self.output)
             if f in self._clickedFiles:
                 b.style.button_color = '#DDDDDD'
                 self._clickedFiles.remove(f)
@@ -282,41 +311,25 @@ class FileBrowser(object):
         self._update_pathbox(self.pathbox)
 
 
-class Display_file():
-    #TODO:
-    '''
-/home/nsiemer/pyiron.git/pyiron_contrib/pyiron_contrib/image/image.py:259: RuntimeWarning: More than 20 figures have been opened. Figures created through the pyplot interface (`matplotlib.pyplot.figure`) are retained until explicitly closed and may consume too much memory. (To control this warning, see the rcParam `figure.max_open_warning`).
-  fig, ax = plt.subplots(**subplots_kwargs)
-    '''
-    def __init__(self,path,outwidget):
-        self.path=path
-        self.output=outwidget
-        _, filetype = os.path.splitext(path)
-        if filetype.lower() in ['.tif','.tiff']:
-            self.display_tiff()
-        elif filetype.lower() in ['.jpg','.jpeg','.png','.gif']:
-            self.display_img()
-        elif filetype.lower() in ['.txt']:
-            self.display_txt()
-        else:
-            self.diplay_default()
-    def display_tiff(self):
-        plt.ioff()
-        img=Image(self.path)
-        fig, ax =img.plot()
-        with self.output:
-            display(fig)
-    def display_txt(self):
-        with self.output:
-            with open(self.path) as f:
-                print(f.read(),end='')
-    def display_img(self):
-        with self.output:
-            display(IPyDisplay.Image(self.path))
-    def diplay_default(self):
-        try:
-            with self.output:
-                display(self.path)
-        except:
-            with self.output:
-                print(self.path)
+class GUI_Data:
+    def __init__(self,project,msg=None):
+        self.project = project
+        self.filewidget= FileBrowser(self.project)
+        self.msg = msg
+    def refresh(self):
+        pass
+    def _get_data(self):
+        self.data=self.filewidget.list_data()
+    def list_data(self):
+        self._get_data()
+        return self.data
+    def gui(self):
+        #print('start gui', self)
+        self.filebrws = self.filewidget.widget()
+#       self.data_name = widgets.Text(
+#           value='',
+#           placeholder='Type something',
+#           description='File Name:',
+#           disabled=False
+#       )
+        return self.filebrws
