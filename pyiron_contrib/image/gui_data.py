@@ -9,6 +9,7 @@ import pandas
 
 from pyiron_contrib.image.S3ObjectDB import S3ObjectDB
 from pyiron_contrib.image.image import Image
+from pyiron_contrib.image.measurement import MeasuredData
 
 
 class Display_file():
@@ -60,7 +61,6 @@ class FileBrowser(object):
     #ToDo:
     #       Make text-field searchable / autocomplete? .
     #       Use S3 store to search for data  -  for now: download data into tmp_dir which is rm after some time?
-    #           Need to abstract the file search method to cover local file system and S3
     #           Need upload method - upon choose files > upload them, ask for meta-data  >> Convert to own class <<
     #                                                                                   Needed for File upload to S3
     def __init__(self,project):
@@ -237,12 +237,16 @@ class FileBrowser(object):
             appendlist.append(f)
         for f in self._clickedFiles:
             appendlist.append(f)
-        #appendlist has _full_ path in the bucket > download from top directory.
+        #appendlist has _full_ path in the bucket -> download from top directory.
         self._data_access.open("")
+        objlist=[]
+        for file in appendlist:
+            objlist.append(self._data_access.get(file))
         self._data_access.download(appendlist,targetpath=self.temp_dir)
         self._data_access.close()
         for f in iglob(self.temp_dir+'/*'):
             self.data.append(f)
+
         with self.output:
             if len(appendlist) > 0:
                 print('Loaded %i File(s):' % (len(appendlist)))
