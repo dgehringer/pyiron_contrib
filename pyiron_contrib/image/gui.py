@@ -513,10 +513,11 @@ class GUI_CALC_EXPERIMENTAL:
         return self.gui_box
 
 class GUI_CALC_ATOMISTIC:
-    def __init__(self, msg=None):
+    def __init__(self, project, msg=None):
         self.par_md = PARAM_MD(self)
         self.par_min = PARAM_MIN(self)
         self.msg = msg
+        self.project = project
         
         calc_opt = widgets.Tab()
         calc_opt.set_title(0, 'MD')
@@ -745,18 +746,10 @@ class GUI_PYIRON:
         self.msg = widgets.Output(layout={'border': '1px solid black'})
         self.msg.append_stdout('')
         self.msg.append_stderr('')
+        self.project = project
         self.clear_msg = widgets.Button(description='Clear')
-
-        self.project=project
-        # Values of the Atomistic pyiron as default
-        self.gui_structure = GUI_Structure(project=self.project, msg=self.msg)
-        self.gui_calcAtom = GUI_CALC_ATOMISTIC(msg=self.msg)
-#       self.gui_input = self.gui_structure
-        self.gui_calc = self.gui_calcAtom
-        # Experimental tattile=['Data','Calculate','Explorer']
-        self.gui_data = GUI_Data(project=self.project, msg=self.msg)
-        self.gui_calcExp = GUI_CALC_EXPERIMENTAL(project=self.project,msg=self.msg)
-        self.gui_explorer = GUI_EXPLORER(project)
+        self.gui_atomistic = GUI_Atomistic(self.project,msg=self.msg)
+        self.gui_experimental = GUI_Experimental(self.project,msg=self.msg)
 
 
     def on_clear_msg_clicked(self, b):
@@ -767,7 +760,7 @@ class GUI_PYIRON:
         py_tab = widgets.Tab()
         py_tab.set_title(0, 'Atomistic')
         py_tab.set_title(1, 'Experimental'),
-        py_tab.children = [self.gui_work_atom(), self.gui_work_exp()]
+        py_tab.children = [self.gui_atomistic.gui(), self.gui_experimental.gui()]
 
 #       self.py_tab_children = [self.gui_work_atom,self.gui_work_exp]
 #
@@ -793,16 +786,26 @@ class GUI_PYIRON:
 #           self.tab_children.refresh()
 #
 #       py_tab.observe(py_on_value_change, names='selected_index')
+        self.clear_msg.on_click(self.on_clear_msg_clicked)
         return widgets.VBox([py_tab, widgets.HBox([self.msg, self.clear_msg])], layout={'border': '4px solid lightgray'})
 
-    def gui_work_atom(self):
+class GUI_Atomistic:
+    def __init__(self, project, msg=None):
+        self.project = project
+        self.msg = msg
+        self.gui_structure = GUI_Structure(self.project, msg=self.msg)
+        self.gui_calc = GUI_CALC_ATOMISTIC(self.project, msg=self.msg)
+        self.gui_explorer = GUI_EXPLORER(self.project)
+
+
+    def gui(self):
         tabtitle=['Structure','Calculate','Explorer']
         tab = widgets.Tab()
         for tabidx in range(len(tabtitle)):
             tab.set_title(tabidx, tabtitle[tabidx])
-        tab.children = [self.gui_structure.gui(), self.gui_calcAtom.gui(), self.gui_explorer.gui()]
+        tab.children = [self.gui_structure.gui(), self.gui_calc.gui(), self.gui_explorer.gui()]
 
-        self.tab_children = [self.gui_structure, self.gui_calcAtom, self.gui_explorer]
+        self.tab_children = [self.gui_structure, self.gui_calc, self.gui_explorer]
 
         def on_value_change(change):
             #print('Atom_tab_chaged')
@@ -820,11 +823,18 @@ class GUI_PYIRON:
                 # print (sel_ind, type(tab.children[sel_ind]), hasattr(self.tab_children[sel_ind], 'refresh'))
             self.tab_children[sel_ind].refresh()
 
-        self.clear_msg.on_click(self.on_clear_msg_clicked)
         tab.observe(on_value_change, names='selected_index')
         return tab
 
-    def gui_work_exp(self):
+class GUI_Experimental:
+    def __init__(self, project, msg=None):
+        self.project = project
+        self.msg = msg
+        self.gui_data = GUI_Data(self.project, msg=self.msg)
+        self.gui_calcExp = GUI_CALC_EXPERIMENTAL(self.project, msg=self.msg)
+        self.gui_explorer = GUI_EXPLORER(self.project)
+
+    def gui(self):
         tab = widgets.Tab()
         tabtitle=['Data','Calculate','Explorer']
         for tabidx in range(len(tabtitle)):
@@ -867,6 +877,5 @@ class GUI_PYIRON:
             self.tab_children[sel_ind].refresh()
             self.just_updated=True
             
-        self.clear_msg.on_click(self.on_clear_msg_clicked)
         tab.observe(on_value_change, names='selected_index')
         return tab
