@@ -1,42 +1,65 @@
 from datetime import datetime
+import os
+import io
+from PIL import Image
+import numpy as np
 
 from pyiron_base.job.core import JobCore
 from pyiron_base.settings.generic import Settings
 
 s = Settings()
 
+
 class MeasuredData:
     """
     Measured Data stores an instance of a measurement, e.g. a single Image.
     """
-    def __init__(self, source=None, data=None, filename=None, metadata=None, filetype=None):
+    def __init__(self, source=None, data=None, filename=None, metadata=None, filetype=None, storedata=False):
         if (source is None) and (data is None):
-            print ("Err: no data given")
-            return
+            print("Err: no data given")
         if data is None:
             self.hasdata = False
         else:
             self.hasdata = True
-            self.data = data
+            self._data = data
         self.measurement = None
         if source is not None:
             self.filename = os.path.split(source)[1]
             self.source = source
         elif filename is None:
             print("Err: No filename given")
-            self.filename = "NoFileName"
+            self.filename = None
         else:
             self.filename = filename
-        self.type = filetype
+        if (filetype is None) and (self.filename is not None):
+            filetype = os.path.splitext(self.filename)[1]
+            if len(filetype[1:]) == 0:
+                self.filetype = None
+            else:
+                self.filetype = filetype[1:]
+        else:
+            self.filetype = filetype
+        if storedata:
+            with open(source,"rb") as f:
+                self._data = f.read()
         self.metadata = metadata
 
     def data(self):
         if self.hasdata:
-            return self.data
+            return self._data
         else:
             return self.source
 
-
+    def data_as_np_array(self):
+        """
+        returns the data converted to a numpy array if convergence is known for the given filetype.
+        Otherwise behave as data()
+        """
+        if not self.hasdata:
+            return self.source
+        if self.filetype.upper() in ["TIF", "TIFF"]:
+            return np.array(Image.open(io.BytesIO(self._data)))
+        self.data()
 
 class Measurement(JobCore):
     """
@@ -52,7 +75,6 @@ class Measurement(JobCore):
         self._metadata = None
         self._data = None
         self._storedata = False
-
 
     @property
     def type(self):
@@ -125,7 +147,7 @@ class Measurement(JobCore):
             self._type = hdf_input["datatype"]
             self._metadata = hdf_input["metadata"]
             if "data" in hdf_input.list_nodes():
-                self._storedata:True
+                self._storedata: True
                 with hdf_input.open("data") as hdf_data:
                     self._data = hdf_data["data"]
 
@@ -171,4 +193,3 @@ class Measurement(JobCore):
             "parentid": self.parent_id,
         }
         return db_dict
-

@@ -334,7 +334,7 @@ class PARAM_IMG3:
         return widgets.VBox()
 
 class GUI_CALC_EXPERIMENTAL:
-    def __init__(self,project, msg=None):
+    def __init__(self, project, msg=None):
         self.msg = msg
         self.par_img=[PARAM_IMG(self),PARAM_IMG2(self),PARAM_IMG3(self)]
         self.project = project
@@ -444,8 +444,8 @@ class GUI_CALC_EXPERIMENTAL:
         self.data=data_structure.list_data()
         self.mask=None
         description=[]
-        for datapath in self.data:
-            description.append(os.path.split(datapath)[1])
+        for data in self.data:
+            description.append(data.filename)
         self.mask=self.multi_checkbox_widget(description)
         self._refresh_gui()
 
@@ -460,16 +460,12 @@ class GUI_CALC_EXPERIMENTAL:
 #                                n_ionic_steps=self.par_md.n_ionic_steps.value, n_print=self.par_md.n_print.value)
 #           else:
 #               self.job.calc_static()
-            mask=[w.value for w in self.mask.children]
-            preview_mask=np.array([i for i, x in enumerate(mask) if x],dtype=int)
+            mask = [w.value for w in self.mask.children]
+            preview_mask = np.array([i for i, x in enumerate(mask) if x], dtype=int)
             #print(preview_mask)
             for image in self.data:
-                self.job.add_image(image, as_gray=True,
-               metadata={
-                   'owner': 'Setareh Medghalchi',
-                   'composition': 'Mg5Al3Ca',
-                   'deformation': '2%'
-               })
+                self.job.add_image(image.data_as_np_array(), as_gray=True,
+                                   metadata=image.metadata)
             self.set_param_img(preview_mask)
             self.job.run()
             self.refresh_job_name()

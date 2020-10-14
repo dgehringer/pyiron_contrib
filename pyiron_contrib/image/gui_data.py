@@ -191,11 +191,12 @@ class FileBrowser(object):
                 for f in iglob(path):
                     #print('append to self.data:',f)
                     if os.path.isfile(f):
-                        self.data.append(f)
                         appendlist.append(f)
                 for f in self._clickedFiles:
-                    self.data.append(f)
                     appendlist.append(f)
+                for f in appendlist:
+                    data=MeasuredData(source=f)
+                    self.data.append(data)
                 with self.output:
                     if len(appendlist) > 0:
                         print ('Loaded %i File(s):' %(len(appendlist)))
@@ -239,14 +240,17 @@ class FileBrowser(object):
             appendlist.append(f)
         #appendlist has _full_ path in the bucket -> download from top directory.
         self._data_access.open("")
-        objlist=[]
         for file in appendlist:
-            objlist.append(self._data_access.get(file))
-        self._data_access.download(appendlist,targetpath=self.temp_dir)
-        self._data_access.close()
-        for f in iglob(self.temp_dir+'/*'):
-            self.data.append(f)
-
+            filename = os.path.split(file)[1]
+            filetype = os.path.splitext(filename)[1]
+            if len(filetype[1:]) == 0:
+                filetype = None
+            else:
+                filetype = filetype[1:]
+            obj = self._data_access.get(file)
+            data = MeasuredData(data=obj['Body'].read(),filename=filename, filetype=filetype,
+                                metadata=obj["Metadata"])
+            self.data.append(data)
         with self.output:
             if len(appendlist) > 0:
                 print('Loaded %i File(s):' % (len(appendlist)))
