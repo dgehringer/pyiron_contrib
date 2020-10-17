@@ -173,7 +173,7 @@ class GUI_AddProject():
             'Project End:*': [None, 'date'],
             'Discipline:*': [[], 'stringlist'],
             'Participating Organizations:*': [[], 'stringlist'],
-            'Project Keywords': [[],'stringlist'],
+            'Project Keywords:': [[],'stringlist'],
             'Visibility:*': ["Project Members",'radiobox'],
             'Grand ID:': [None, 'int']
         }
@@ -189,23 +189,48 @@ class GUI_AddProject():
         childs.append(widgets.DatePicker(
             description="Project Start:*",
             value=metadata["Project Start:*"][0],
-            layout=widgets.Layout(width="80%"),
+            layout=widgets.Layout(width="50%"),
             style={'description_width': '25%'}
         ))
         childs.append(widgets.DatePicker(
             description="Project End:*",
             value=metadata["Project End:*"][0],
-            layout=widgets.Layout(width="80%"),
+            layout=widgets.Layout(width="50%"),
             style={'description_width': '25%'}
         ))
-        Multibox = MultiComboBox(
+        childs.append(MultiComboBox(
             description="Discipline:*",
             value=metadata["Discipline:*"][0],
             options=["Theoretical Chemistry","Arts"],
             layout=widgets.Layout(width="80%"),
             style={'description_width': '25%'}
-        )
-        childs.append(Multibox.widget())
+        ).widget())
+        childs.append(MultiComboBox(
+            description='Participating Organizations:*',
+            value=metadata['Participating Organizations:*'][0],
+            options=["MPIE", "RWTH"],
+            layout=widgets.Layout(width="80%"),
+            style={'description_width': '25%'}
+        ).widget())
+        childs.append(MultiTextBox(
+            description='Project Keywords:',
+            value=metadata['Project Keywords:'][0],
+            layout=widgets.Layout(width="80%"),
+            style={'description_width': '25%'}
+        ).widget())
+        childs.append(widgets.RadioButtons(
+            description='Visibility:*',
+            value=metadata['Visibility:*'][0],
+            options=["Project Members", "Public"],
+            layout=widgets.Layout(width="80%"),
+            style={'description_width': '25%'}
+        ))
+        childs.append(widgets.IntText(
+            description='Grand ID:',
+            value=metadata['Grand ID:'][0],
+            layout=widgets.Layout(width="80%"),
+            style={'description_width': '25%'}
+        ))
 
         SubmitButton=widgets.Button(
             description="Submit"
@@ -265,4 +290,48 @@ class  MultiComboBox:
 
         outerbox.children = tuple([Label, innerbox])
 
+class  MultiTextBox:
+    def __init__(self, **kwargs):
+        self.description = kwargs.pop('description', "")
+        self.value = kwargs.pop('value', [])
+        self.options = kwargs.pop("options", None)
+        self.placeholder = kwargs.pop("placeholder", "")
+        self._outerbox = widgets.HBox(**kwargs)
+        self._kwargs = kwargs
+
+    def widget(self):
+        self._update_widget(self._outerbox)
+        return self._outerbox
+
+    def _on_click(self,b):
+        self.value.remove(b.description)
+        self._update_widget(self._outerbox)
+
+    def _on_value_change(self,change):
+        if change['new'] not in self.value:
+            self.value.append(change['new'])
+        self._update_widget(self._outerbox)
+
+    def _update_widget(self, outerbox):
+        innerbox = widgets.VBox()
+        childs = []
+        Textbox = widgets.Text(
+            description="",
+            value="",
+            placeholder=self.placeholder,
+        )
+        Textbox.continuous_update = False
+        Textbox.observe(self._on_value_change, names="value")
+        childs.append(Textbox)
+        for val in self.value:
+            button = widgets.Button(
+                description=val,
+                tooltip="delete"
+            )
+            button.on_click(self._on_click)
+            childs.append(button)
+        Label = widgets.Label(self.description)
+        innerbox.children = tuple(childs)
+
+        outerbox.children = tuple([Label, innerbox])
 
