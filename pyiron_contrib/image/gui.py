@@ -5,7 +5,7 @@ from IPython.display import display
 from pyiron.atomistics.structure.periodic_table import PeriodicTable
 import os
 
-from pyiron_contrib.image.gui_data import GUI_Data
+from pyiron_contrib.RDM.gui_data import GUI_Data
 
 
 class GUI_PSE:

@@ -73,8 +73,7 @@ class Measurement(JobCore):
         self._type = None
         self.sample = None
         self._metadata = None
-        self._data = None
-        self._storedata = False
+        self._data = []
 
     @property
     def type(self):

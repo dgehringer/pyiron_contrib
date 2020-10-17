@@ -7,9 +7,9 @@ from IPython.core.display import display
 from matplotlib import pylab as plt
 import pandas
 
-from pyiron_contrib.image.S3ObjectDB import S3ObjectDB
+from pyiron_contrib.RDM.S3ObjectDB import S3ObjectDB
 from pyiron_contrib.image.image import Image
-from pyiron_contrib.image.measurement import MeasuredData
+from pyiron_contrib.RDM.measurement import MeasuredData
 
 
 class Display_file():
