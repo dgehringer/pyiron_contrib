@@ -30,12 +30,23 @@ class GUI_RDM:
         Hseperator = widgets.HBox(layout=widgets.Layout(border="solid 1px"))
         self.bodybox = widgets.VBox()
         self.footerbox = widgets.HBox()
-        self._update_pathbox(self.headerbox)
-        self._update_proj(self.bodybox)
+        self._update_header(self.headerbox)
+        self._update_body(self.bodybox)
         self.box.children = tuple([self.headerbox, Hseperator, self.bodybox, self.footerbox])
         return self.box
 
-    def _update_proj(self,box):
+    def update(self, headerbox=None, bodybox=None, footerbox=None):
+        self.rdm_projects = self.pr.parent_group.list_groups()
+        if headerbox is not None:
+            self.headerbox = headerbox
+        if bodybox is not None:
+            self.bodybox = bodybox
+        if footerbox is not None:
+            self.footerbox = footerbox
+        self._update_header(self.headerbox)
+        self._update_body(self.bodybox)
+
+    def _update_body(self, box):
         btnLayout=widgets.Layout(color="green", height="120px", width="120px")
         res_buttons = []
         for res in self.rdm_resources:
@@ -68,7 +79,7 @@ class GUI_RDM:
         childs.append(projBox)
         box.children = tuple(childs)
 
-    def _update_pathbox(self, box):
+    def _update_header(self, box):
         buttons = []
         tmppath_old = self.rdm_project+' '
         tmppath = os.path.split(self.rdm_project)[0]
@@ -98,21 +109,22 @@ class GUI_RDM:
             self.rdm_projects = self.pr.list_groups()
         if not hasattr(self.pr, "metadata"):
             self.pr.metadata = None
-        self._update_proj(self.bodybox)
-        self._update_pathbox(self.headerbox)
+        self._update_body(self.bodybox)
+        self._update_header(self.headerbox)
 
-    def change_res(self,b):
+    def change_res(self, b):
         pass
 
-    def add_resource(self,b):
+    def add_resource(self, b):
         pass
 
-    def add_project(self,b):
-        add = GUI_AddProject(self.pr, VBox=self.bodybox)
+    def add_project(self, b):
+        add = GUI_AddProject(project=self.pr, VBox=self.bodybox, origin=self)
         add.gui()
 
+
 class GUI_AddProject():
-    def __init__(self, project=None, VBox=None):
+    def __init__(self, project=None, VBox=None, origin=None):
         if VBox is None:
             self.bodybox = widgets.VBox()
         else:
@@ -122,12 +134,14 @@ class GUI_AddProject():
             self.old_metadata = self.pr.metadata
         else:
             self.old_metadata = None
+        if origin is not None:
+            self.origin = origin
 
     def gui(self):
         self._update(self.bodybox)
         return self.bodybox
 
-    def _update(self, box, metadata=None):
+    def _update(self, box, _metadata=None):
         def on_click(b):
             if b.description == "Submit":
                 dic = {}
@@ -136,7 +150,7 @@ class GUI_AddProject():
                         dic[child.description] = child.value
                 self.add_proj(dic)
             if b.description == 'Copy Metadata':
-                self._update(box, metadata=self.old_metadata)
+                self._update(box, _metadata=self.old_metadata)
 
 
         childs = []
@@ -168,13 +182,13 @@ class GUI_AddProject():
             childs.append(widgets.HBox([Label, Button]))
 
         metadata = {
-            'Principal Investigators (PIs):*': [[],'string'],
+            'Principal Investigators (PIs):*': [[], 'stringlist'],
             'Project Start:*': [None, 'date'],
             'Project End:*': [None, 'date'],
             'Discipline:*': [[], 'stringlist'],
             'Participating Organizations:*': [[], 'stringlist'],
             'Project Keywords:': [[],'stringlist'],
-            'Visibility:*': ["Project Members",'radiobox'],
+            'Visibility:*': ["Project Members", 'radiobox'],
             'Grand ID:': [None, 'int']
         }
 
@@ -245,8 +259,11 @@ class GUI_AddProject():
     def add_proj(self, dic):
         try:
             pr = self.pr.open(dic["Project Name:*"])
+            pr.metadata = dic
         except:
             return
+        self.origin.pr = pr
+        self.origin.update(bodybox=self.bodybox)
 
 class  MultiComboBox:
     def __init__(self, **kwargs):
