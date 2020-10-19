@@ -168,7 +168,7 @@ class GUI_AddProject():
             childs.append(widgets.HBox([Label, Button]))
 
         metadata = {
-            'Principal Investigators (PIs):*': ['','string'],
+            'Principal Investigators (PIs):*': [[],'string'],
             'Project Start:*': [None, 'date'],
             'Project End:*': [None, 'date'],
             'Discipline:*': [[], 'stringlist'],
@@ -178,58 +178,61 @@ class GUI_AddProject():
             'Grand ID:': [None, 'int']
         }
 
-        childs.append(widgets.Text(
+        childs.append(MultiTextBox(
             description="Principal Investigators (PIs):*",
             placeholder="Principal Investigators (PIs)",
             value=metadata["Principal Investigators (PIs):*"][0],
             disable=False,
-            layout=widgets.Layout(width="80%"),
-            style={'description_width': '25%'}
-        ))
+            layout=widgets.Layout(width="85%"),
+            style={'description_width': '30%'}
+        ).widget())
         childs.append(widgets.DatePicker(
             description="Project Start:*",
             value=metadata["Project Start:*"][0],
-            layout=widgets.Layout(width="50%"),
-            style={'description_width': '25%'}
+            layout=widgets.Layout(width="50%",display="flex"),
+            style={'description_width': '50%'}
         ))
         childs.append(widgets.DatePicker(
             description="Project End:*",
             value=metadata["Project End:*"][0],
             layout=widgets.Layout(width="50%"),
-            style={'description_width': '25%'}
+            style={'description_width': '50%'}
         ))
         childs.append(MultiComboBox(
             description="Discipline:*",
             value=metadata["Discipline:*"][0],
+            placeholder="Discipline",
             options=["Theoretical Chemistry","Arts"],
-            layout=widgets.Layout(width="80%"),
-            style={'description_width': '25%'}
+            layout=widgets.Layout(width="85%"),
+            style={'description_width': '30%'}
         ).widget())
         childs.append(MultiComboBox(
             description='Participating Organizations:*',
             value=metadata['Participating Organizations:*'][0],
+            placeholder="Participating Organizations:",
             options=["MPIE", "RWTH"],
-            layout=widgets.Layout(width="80%"),
-            style={'description_width': '25%'}
+            layout=widgets.Layout(width="85%"),
+            style={'description_width': '30%'}
         ).widget())
         childs.append(MultiTextBox(
             description='Project Keywords:',
             value=metadata['Project Keywords:'][0],
-            layout=widgets.Layout(width="80%"),
-            style={'description_width': '25%'}
+            placeholder="Keywords",
+            layout=widgets.Layout(width="85%"),
+            style={'description_width': '30%'}
         ).widget())
         childs.append(widgets.RadioButtons(
             description='Visibility:*',
             value=metadata['Visibility:*'][0],
             options=["Project Members", "Public"],
-            layout=widgets.Layout(width="80%"),
-            style={'description_width': '25%'}
+            layout=widgets.Layout(width="85%"),
+            style={'description_width': '30%'}
         ))
         childs.append(widgets.IntText(
             description='Grand ID:',
             value=metadata['Grand ID:'][0],
-            layout=widgets.Layout(width="80%"),
-            style={'description_width': '25%'}
+            layout=widgets.Layout(width="85%"),
+            style={'description_width': '30%'}
         ))
 
         SubmitButton=widgets.Button(
@@ -251,6 +254,8 @@ class  MultiComboBox:
         self.value = kwargs.pop('value', [])
         self.options = kwargs.pop("options", None)
         self.placeholder = kwargs.pop("placeholder", "")
+        self.style = kwargs.pop("style", "")
+        self.description_width = self.style.pop("description_width", "")
         self._outerbox = widgets.HBox(**kwargs)
         self._kwargs = kwargs
 
@@ -276,7 +281,7 @@ class  MultiComboBox:
             value="",
             placeholder=self.placeholder
         )
-        Combobox.observe(self._on_value_change,names="value")
+        Combobox.observe(self._on_value_change, names="value")
         childs.append(Combobox)
         for val in self.value:
             button = widgets.Button(
@@ -285,7 +290,13 @@ class  MultiComboBox:
             )
             button.on_click(self._on_click)
             childs.append(button)
-        Label = widgets.Label(self.description)
+        Label = widgets.Label(
+            self.description,
+            layout=widgets.Layout(
+                display="flex",
+                justify_content="flex-end",
+                width=self.description_width+'      ')
+        )
         innerbox.children = tuple(childs)
 
         outerbox.children = tuple([Label, innerbox])
@@ -296,6 +307,8 @@ class  MultiTextBox:
         self.value = kwargs.pop('value', [])
         self.options = kwargs.pop("options", None)
         self.placeholder = kwargs.pop("placeholder", "")
+        self.style = kwargs.pop("style", "")
+        self.description_width = self.style.pop("description_width", "")
         self._outerbox = widgets.HBox(**kwargs)
         self._kwargs = kwargs
 
@@ -330,7 +343,13 @@ class  MultiTextBox:
             )
             button.on_click(self._on_click)
             childs.append(button)
-        Label = widgets.Label(self.description)
+        Label = widgets.Label(
+            self.description,
+            layout=widgets.Layout(
+                display="flex",
+                justify_content="flex-end",
+                width=self.description_width+'  ')
+        )
         innerbox.children = tuple(childs)
 
         outerbox.children = tuple([Label, innerbox])
