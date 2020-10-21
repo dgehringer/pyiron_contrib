@@ -147,7 +147,7 @@ class GUI_AddProject():
             if b.description == "Submit":
                 dic = {}
                 for child in childs:
-                    if hasattr(child, 'value'):
+                    if hasattr(child, 'value') and (child.description != ""):
                         dic[child.description] = child.value
                 self.add_proj(dic)
             if b.description == 'Copy Metadata':
@@ -293,7 +293,7 @@ class  MultiComboBox:
     def _update_widget(self, outerbox):
         innerbox = widgets.VBox()
         childs = []
-        Combobox=widgets.Combobox(
+        Combobox = widgets.Combobox(
             description="",
             options=self.options,
             value="",
@@ -335,11 +335,11 @@ class  MultiTextBox:
         self._update_widget(self._outerbox)
         return self._outerbox
 
-    def _on_click(self,b):
+    def _on_click(self, b):
         self.value.remove(b.description)
         self._update_widget(self._outerbox)
 
-    def _on_value_change(self,change):
+    def _on_value_change(self, change):
         if change['new'] not in self.value:
             self.value.append(change['new'])
         self._update_widget(self._outerbox)
