@@ -2,29 +2,38 @@ import ipywidgets as widgets
 import os
 
 from pyiron_base import Project
-from pyiron_base import InputList
+#from pyiron_base import InputList
+from pyiron_contrib.RDM.internal_widgets import MultiComboBox, MultiTextBox
+
 
 class GUI_RDM:
     """
     Access to the Research Data Management (RDM) system
     """
-    #TODO: Add metadata into hdf of project and reload afterwards
+
+    # TODO: Add metadata into hdf of project and reload afterwards
     def __init__(self, project=None, Vbox=None):
         if Vbox is None:
             self.box = widgets.VBox()
         else:
             self.box = Vbox
         # rmd_project is a relative path like string representation
-        if project is None:
-            self.default_proj = "SFB1394"
-            self.pr = Project(self.default_proj)
-            self.pr.metadata = InputList(table_name="metadata")
-        else:
-            self.pr = project
-            self.default_proj = self.pr.base_name
+        self.default_proj = "SFB1394"
+        if project is not None:
+            self.default_proj = project.base_name
+        self.pr = project
+        self.list_groups()
         self.rdm_project = ""
-        self.rdm_projects = self.pr.parent_group.list_groups()
-        self.rdm_resources = []
+
+    def list_nodes(self):
+        return []
+
+    def list_groups(self):
+        if self.pr is None:
+            pr = Project(self.default_proj)
+            return pr.parent_group.list_groups()
+        else:
+            return self.pr.list_groups()
 
     def gui(self):
         self.headerbox = widgets.HBox()
@@ -37,7 +46,6 @@ class GUI_RDM:
         return self.box
 
     def update(self, headerbox=None, bodybox=None, footerbox=None):
-        self.rdm_projects = self.pr.list_groups()
         if headerbox is not None:
             self.headerbox = headerbox
         if bodybox is not None:
@@ -48,22 +56,22 @@ class GUI_RDM:
         self._update_body(self.bodybox)
 
     def _update_body(self, box):
-        btnLayout=widgets.Layout(color="green", height="120px", width="120px")
+        btnLayout = widgets.Layout(color="green", height="120px", width="120px")
         res_buttons = []
-        for res in self.rdm_resources:
+        for res in self.list_nodes():
             button = widgets.Button(description=res, icon="fa-briefcase", layout=btnLayout)
-            button.on_click(self.change_res)
+            button.on_click(self.open_res)
             res_buttons.append(button)
-        button=widgets.Button(description="Add Resource", icon="fa-plus-circle", layout=btnLayout)
+        button = widgets.Button(description="Add Resource", icon="fa-plus-circle", layout=btnLayout)
         button.on_click(self.add_resource)
         res_buttons.append(button)
         proj_buttons = []
-        for proj in self.rdm_projects:
+        for proj in self.list_groups():
             button = widgets.Button(description=proj, icon="fa-folder", layout=btnLayout)
-            button.path = self.rdm_project+proj+'/'
+            button.path = self.rdm_project + proj + '/'
             button.on_click(self.change_proj)
             proj_buttons.append(button)
-        button=widgets.Button(description="Add Project", icon="fa-plus-circle", layout=btnLayout)
+        button = widgets.Button(description="Add Project", icon="fa-plus-circle", layout=btnLayout)
         button.on_click(self.add_project)
         proj_buttons.append(button)
         childs = []
@@ -82,14 +90,14 @@ class GUI_RDM:
 
     def _update_header(self, box):
         buttons = []
-        tmppath_old = self.rdm_project+' '
+        tmppath_old = self.rdm_project + ' '
         tmppath = os.path.split(self.rdm_project)[0]
         while tmppath != tmppath_old:
             tmppath_old = tmppath
             [tmppath, proj] = os.path.split(tmppath)
             button = widgets.Button(description=proj, layout=widgets.Layout(width='auto'))
             button.style.button_color = '#DDDDAA'
-            button.path = tmppath_old+'/'
+            button.path = tmppath_old + '/'
             button.on_click(self.change_proj)
             buttons.append(button)
         button = widgets.Button(icon="fa-home", layout=widgets.Layout(width='auto'))
@@ -103,17 +111,16 @@ class GUI_RDM:
     def change_proj(self, b):
         self.rdm_project = b.path
         if b.path == "":
-            self.pr = Project(self.default_proj)
-            self.rdm_projects = self.pr.parent_group.list_groups()
+            self.pr = None
         else:
             self.pr = Project(self.rdm_project)
-            self.rdm_projects = self.pr.list_groups()
-        if not hasattr(self.pr, "metadata"):
-            self.pr.metadata = None
+        self.rdm_projects = self.list_groups()
+        #if not hasattr(self.pr, "metadata"):
+        #    self.pr.metadata = None
         self._update_body(self.bodybox)
         self._update_header(self.headerbox)
 
-    def change_res(self, b):
+    def open_res(self, b):
         pass
 
     def add_resource(self, b):
@@ -153,14 +160,13 @@ class GUI_AddProject():
             if b.description == 'Copy Metadata':
                 self._update(box, _metadata=self.old_metadata)
 
-
         childs = []
         childs.append(widgets.HTML("<h2>Create Project:</h2>"))
         for field in ["Project Name", "Display Name"]:
             childs.append(widgets.Text(
                 value='',
                 placeholder=field,
-                description=field+":*",
+                description=field + ":*",
                 disabled=False,
                 layout=widgets.Layout(width="80%"),
                 style={'description_width': '25%'}
@@ -177,21 +183,30 @@ class GUI_AddProject():
         childs.append(widgets.HTML("<h3>Project Metadata</h3>"))
 
         if self.old_metadata is not None:
-            Label = widgets.Label(value="Copy metadata from"+os.linesep + self.pr.base_name)
+            Label = widgets.Label(
+                value="Copy metadata from '" + self.pr.base_name + "'",
+                layout=widgets.Layout(
+                    width="30%",
+                    display="flex",
+                    justify_content="flex-end"
+                ))
             Button = widgets.Button(description="Copy Metadata")
             Button.on_click(on_click)
-            childs.append(widgets.HBox([Label, Button]))
+            childs.append(widgets.HBox([Label, Button], layout=widgets.Layout(width="85%")))
 
-        metadata = {
-            'Principal Investigators (PIs):*': [[], 'stringlist'],
-            'Project Start:*': [None, 'date'],
-            'Project End:*': [None, 'date'],
-            'Discipline:*': [[], 'stringlist'],
-            'Participating Organizations:*': [[], 'stringlist'],
-            'Project Keywords:': [[],'stringlist'],
-            'Visibility:*': ["Project Members", 'radiobox'],
-            'Grand ID:': [None, 'int']
-        }
+        if _metadata is None:
+            metadata = {
+                'Principal Investigators (PIs):*': [[], 'stringlist'],
+                'Project Start:*': [None, 'date'],
+                'Project End:*': [None, 'date'],
+                'Discipline:*': [[], 'stringlist'],
+                'Participating Organizations:*': [[], 'stringlist'],
+                'Project Keywords:': [[], 'stringlist'],
+                'Visibility:*': ["Project Members", 'radiobox'],
+                'Grand ID:': [None, 'string']
+            }
+        else:
+            metadata = _metadata
 
         childs.append(MultiTextBox(
             description="Principal Investigators (PIs):*",
@@ -204,7 +219,7 @@ class GUI_AddProject():
         childs.append(widgets.DatePicker(
             description="Project Start:*",
             value=metadata["Project Start:*"][0],
-            layout=widgets.Layout(width="50%",display="flex"),
+            layout=widgets.Layout(width="50%", display="flex"),
             style={'description_width': '50%'}
         ))
         childs.append(widgets.DatePicker(
@@ -217,7 +232,7 @@ class GUI_AddProject():
             description="Discipline:*",
             value=metadata["Discipline:*"][0],
             placeholder="Discipline",
-            options=["Theoretical Chemistry","Arts"],
+            options=["Theoretical Chemistry", "Arts"],
             layout=widgets.Layout(width="85%"),
             style={'description_width': '30%'}
         ).widget())
@@ -240,17 +255,18 @@ class GUI_AddProject():
             description='Visibility:*',
             value=metadata['Visibility:*'][0],
             options=["Project Members", "Public"],
-            layout=widgets.Layout(width="85%"),
-            style={'description_width': '30%'}
+            layout=widgets.Layout(width="50%"),
+            style={'description_width': '50%'}
         ))
-        childs.append(widgets.IntText(
+        childs.append(widgets.Text(
             description='Grand ID:',
+            placeholder='Grand ID',
             value=metadata['Grand ID:'][0],
             layout=widgets.Layout(width="85%"),
             style={'description_width': '30%'}
         ))
 
-        SubmitButton=widgets.Button(
+        SubmitButton = widgets.Button(
             description="Submit"
         )
         SubmitButton.on_click(on_click)
@@ -258,118 +274,21 @@ class GUI_AddProject():
         box.children = tuple(childs)
 
     def add_proj(self, dic):
-        try:
-            pr = self.pr.open(dic["Project Name:*"])
-            pr.metadata = dic
-        except:
-            return
-        self.origin.pr = pr
-        self.origin.update(bodybox=self.bodybox)
+        if self.pr is not None:
+            #try:
+                pr = self.pr.open(dic["Project Name:*"])
+                pr.metadata = dic
+            #except None:
+            #    print ("Failed to open new project.")
+        else:
+            #try:
+                pr = Project(dic["Project Name:*"])
+                pr.metadata = dic
+            #except None:
+            #    print("Failed to open new project.")
+        if self.origin is not None:
+            self.origin.update(bodybox=self.bodybox)
+        else:
+            self.bodybox.children = tuple(widgets.HTML("Project added"))
 
-class  MultiComboBox:
-    def __init__(self, **kwargs):
-        self.description = kwargs.pop('description', "")
-        self.value = kwargs.pop('value', [])
-        self.options = kwargs.pop("options", None)
-        self.placeholder = kwargs.pop("placeholder", "")
-        self.style = kwargs.pop("style", "")
-        self.description_width = self.style.pop("description_width", "")
-        self._outerbox = widgets.HBox(**kwargs)
-        self._kwargs = kwargs
-
-    def widget(self):
-        self._update_widget(self._outerbox)
-        return self._outerbox
-
-    def _on_click(self,b):
-        self.value.remove(b.description)
-        self._update_widget(self._outerbox)
-
-    def _on_value_change(self,change):
-        if change['new'] not in self.value:
-            self.value.append(change['new'])
-        self._update_widget(self._outerbox)
-
-    def _update_widget(self, outerbox):
-        innerbox = widgets.VBox()
-        childs = []
-        Combobox = widgets.Combobox(
-            description="",
-            options=self.options,
-            value="",
-            placeholder=self.placeholder
-        )
-        Combobox.continuous_update = False
-        Combobox.observe(self._on_value_change, names="value")
-        childs.append(Combobox)
-        for val in self.value:
-            button = widgets.Button(
-                description=val,
-                tooltip="delete"
-            )
-            button.on_click(self._on_click)
-            childs.append(button)
-        Label = widgets.Label(
-            self.description,
-            layout=widgets.Layout(
-                display="flex",
-                justify_content="flex-end",
-                width=self.description_width+'      ')
-        )
-        innerbox.children = tuple(childs)
-
-        outerbox.children = tuple([Label, innerbox])
-
-class  MultiTextBox:
-    def __init__(self, **kwargs):
-        self.description = kwargs.pop('description', "")
-        self.value = kwargs.pop('value', [])
-        self.options = kwargs.pop("options", None)
-        self.placeholder = kwargs.pop("placeholder", "")
-        self.style = kwargs.pop("style", "")
-        self.description_width = self.style.pop("description_width", "")
-        self._outerbox = widgets.HBox(**kwargs)
-        self._kwargs = kwargs
-
-    def widget(self):
-        self._update_widget(self._outerbox)
-        return self._outerbox
-
-    def _on_click(self, b):
-        self.value.remove(b.description)
-        self._update_widget(self._outerbox)
-
-    def _on_value_change(self, change):
-        if change['new'] not in self.value:
-            self.value.append(change['new'])
-        self._update_widget(self._outerbox)
-
-    def _update_widget(self, outerbox):
-        innerbox = widgets.VBox()
-        childs = []
-        Textbox = widgets.Text(
-            description="",
-            value="",
-            placeholder=self.placeholder,
-        )
-        Textbox.continuous_update = False
-        Textbox.observe(self._on_value_change, names="value")
-        childs.append(Textbox)
-        for val in self.value:
-            button = widgets.Button(
-                description=val,
-                tooltip="delete"
-            )
-            button.on_click(self._on_click)
-            childs.append(button)
-        Label = widgets.Label(
-            self.description,
-            layout=widgets.Layout(
-                display="flex",
-                justify_content="flex-end",
-                width=self.description_width+'  ')
-        )
-        innerbox.children = tuple(childs)
-
-        outerbox.children = tuple([Label, innerbox])
 
