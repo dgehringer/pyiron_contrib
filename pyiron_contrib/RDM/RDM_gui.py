@@ -8,6 +8,7 @@ class GUI_RDM:
     """
     Access to the Research Data Management (RDM) system
     """
+    #TODO: Add metadata into hdf of project and reload afterwards
     def __init__(self, project=None, Vbox=None):
         if Vbox is None:
             self.box = widgets.VBox()
@@ -20,7 +21,7 @@ class GUI_RDM:
             self.pr.metadata = InputList(table_name="metadata")
         else:
             self.pr = project
-            self.default_proj =  self.pr.base_name
+            self.default_proj = self.pr.base_name
         self.rdm_project = ""
         self.rdm_projects = self.pr.parent_group.list_groups()
         self.rdm_resources = []
@@ -36,7 +37,7 @@ class GUI_RDM:
         return self.box
 
     def update(self, headerbox=None, bodybox=None, footerbox=None):
-        self.rdm_projects = self.pr.parent_group.list_groups()
+        self.rdm_projects = self.pr.list_groups()
         if headerbox is not None:
             self.headerbox = headerbox
         if bodybox is not None:
@@ -298,6 +299,7 @@ class  MultiComboBox:
             value="",
             placeholder=self.placeholder
         )
+        Combobox.continuous_update = False
         Combobox.observe(self._on_value_change, names="value")
         childs.append(Combobox)
         for val in self.value:
