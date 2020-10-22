@@ -12,6 +12,7 @@ class Project(ProjectCore):
                          )
         self._metadata = InputList(table_name="metadata")
         self.hdf5 = self.create_hdf(self.path, self.base_name + "_projectdata")
+        self.load_metadata()
 
     @property
     def metadata(self):
