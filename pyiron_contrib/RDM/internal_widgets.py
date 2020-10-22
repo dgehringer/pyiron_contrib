@@ -8,7 +8,7 @@ class MultiComboBox:
         self.value = kwargs.pop('value', [])
         self.options = kwargs.pop("options", None)
         self.placeholder = kwargs.pop("placeholder", "")
-        self.style = kwargs.pop("style", "")
+        self.style = kwargs.pop("style", {})
         self.description_width = self.style.pop("description_width", "")
         self._outerbox = widgets.HBox(**kwargs)
         self._kwargs = kwargs
@@ -64,7 +64,7 @@ class MultiTextBox:
         self.value = kwargs.pop('value', [])
         self.options = kwargs.pop("options", None)
         self.placeholder = kwargs.pop("placeholder", "")
-        self.style = kwargs.pop("style", "")
+        self.style = kwargs.pop("style", {})
         self.description_width = self.style.pop("description_width", "")
         self._outerbox = widgets.HBox(**kwargs)
         self._kwargs = kwargs
