@@ -1,17 +1,16 @@
 import ipywidgets as widgets
 import os
+from datetime import datetime
 
-from pyiron_base import Project
-#from pyiron_base import InputList
 from pyiron_contrib.RDM.internal_widgets import MultiComboBox, MultiTextBox
-
+from pyiron_contrib.RDM.project import Project
+from pyiron_base import InputList
 
 class GUI_RDM:
     """
     Access to the Research Data Management (RDM) system
     """
 
-    # TODO: Add metadata into hdf of project and reload afterwards
     def __init__(self, project=None, Vbox=None):
         if Vbox is None:
             self.box = widgets.VBox()
@@ -115,8 +114,6 @@ class GUI_RDM:
         else:
             self.pr = Project(self.rdm_project)
         self.rdm_projects = self.list_groups()
-        #if not hasattr(self.pr, "metadata"):
-        #    self.pr.metadata = None
         self._update_body(self.bodybox)
         self._update_header(self.headerbox)
 
@@ -138,10 +135,11 @@ class GUI_AddProject():
         else:
             self.bodybox = VBox
         self.pr = project
+        self.old_metadata = None
         if hasattr(self.pr, 'metadata'):
-            self.old_metadata = self.pr.metadata
-        else:
-            self.old_metadata = None
+            if isinstance(self.pr.metadata, InputList):
+                if self.pr.metadata.has_keys():
+                    self.old_metadata = self.pr.metadata
         if origin is not None:
             self.origin = origin
 
@@ -152,13 +150,21 @@ class GUI_AddProject():
     def _update(self, box, _metadata=None):
         def on_click(b):
             if b.description == "Submit":
-                dic = {}
                 for child in childs:
                     if hasattr(child, 'value') and (child.description != ""):
-                        dic[child.description] = child.value
-                self.add_proj(dic)
+                        try:
+                            if metadata[child.description][1] == 'date':
+                                value = datetime.toordinal(child.value)
+                            else:
+                                value = child.value
+                            metadata[child.description][0] = value
+                        except KeyError:
+                            metadata[child.description] = [child.value, 'unknown']
+                self.add_proj(metadata)
             if b.description == 'Copy Metadata':
                 self._update(box, _metadata=self.old_metadata)
+            if b.description == 'Clear Metadata':
+                self._update(box)
 
         childs = []
         childs.append(widgets.HTML("<h2>Create Project:</h2>"))
@@ -184,15 +190,37 @@ class GUI_AddProject():
 
         if self.old_metadata is not None:
             Label = widgets.Label(
-                value="Copy metadata from '" + self.pr.base_name + "'",
+                value="Copy metadata from ",
                 layout=widgets.Layout(
-                    width="30%",
+                    width="99%",
                     display="flex",
-                    justify_content="flex-end"
+                    justify_content="center"
                 ))
+            Label2 = widgets.Label(
+                value="'" + self.pr.base_name + "'",
+                layout = Label.layout
+                #widgets.Layout(
+                #    width="30%",
+                #    display="flex",
+                #    justify_content="center"
+            )#)
             Button = widgets.Button(description="Copy Metadata")
             Button.on_click(on_click)
-            childs.append(widgets.HBox([Label, Button], layout=widgets.Layout(width="85%")))
+            Button2 = widgets.Button(description="Clear Metadata",height="auto")
+            Button2.on_click(on_click)
+            childs.append(widgets.HBox(
+                [widgets.VBox([Label, Label2],
+                              layout=widgets.Layout(width="30%")),
+                Button,
+                Button2
+                 ],
+                layout=widgets.Layout(width="85%")
+            ))
+            #childs.append(widgets.HBox(
+            #    [Label],
+            #    layout=widgets.Layout(width="85%")
+            #))
+            #childs.append(widgets.HBox([Label2, Button, Button2], layout=widgets.Layout(width="85%")))
 
         if _metadata is None:
             metadata = {
@@ -206,7 +234,7 @@ class GUI_AddProject():
                 'Grand ID:': [None, 'string']
             }
         else:
-            metadata = _metadata
+            metadata = _metadata.to_builtin()
 
         childs.append(MultiTextBox(
             description="Principal Investigators (PIs):*",
@@ -216,15 +244,23 @@ class GUI_AddProject():
             layout=widgets.Layout(width="85%"),
             style={'description_width': '30%'}
         ).widget())
+
+        date = metadata["Project Start:*"][0]
+        if date is not None:
+            date = datetime.fromordinal(date).date()
         childs.append(widgets.DatePicker(
             description="Project Start:*",
-            value=metadata["Project Start:*"][0],
+            value=date,
             layout=widgets.Layout(width="50%", display="flex"),
             style={'description_width': '50%'}
         ))
+
+        date = metadata["Project End:*"][0]
+        if date is not None:
+            date = datetime.fromordinal(date).date()
         childs.append(widgets.DatePicker(
             description="Project End:*",
-            value=metadata["Project End:*"][0],
+            value=date,
             layout=widgets.Layout(width="50%"),
             style={'description_width': '50%'}
         ))
@@ -276,7 +312,7 @@ class GUI_AddProject():
     def add_proj(self, dic):
         if self.pr is not None:
             #try:
-                pr = self.pr.open(dic["Project Name:*"])
+                pr = self.pr.open(dic["Project Name:*"][0])
                 pr.metadata = dic
             #except None:
             #    print ("Failed to open new project.")
@@ -286,6 +322,7 @@ class GUI_AddProject():
                 pr.metadata = dic
             #except None:
             #    print("Failed to open new project.")
+        pr.save_metadata()
         if self.origin is not None:
             self.origin.update(bodybox=self.bodybox)
         else:
