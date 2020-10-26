@@ -59,87 +59,98 @@ class Display_file():
 
 class FileBrowser(object):
     #ToDo:
-    #       Make text-field searchable / autocomplete? .
-    #       Use S3 store to search for data  -  for now: download data into tmp_dir which is rm after some time?
     #           Need upload method - upon choose files > upload them, ask for meta-data  >> Convert to own class <<
     #                                                                                   Needed for File upload to S3
-    def __init__(self,project):
-        self.project=project
-        self.path = os.getcwd()
-        self.data=[]
-        self.box2_value=self.path
+    def __init__(self, project, s3path="", fix_s3_path=False, storage_system="local"):
+        self.project = project
+        self.fix_s3_path = fix_s3_path
+        self.s3path = s3path
+        self.data_sys = storage_system
+        if self.data_sys == "local":
+            self.path = os.getcwd()
+        else:
+            self.path = self.s3path
+        self.box2_value = self.path
         self.output = widgets.Output(layout=widgets.Layout(width='50%', height='100%'))
-        self._clickedFiles=[]
-        self.s3path=""
+        self._clickedFiles = []
+        self.data = []
         # have a look at tempdir
-        self.temp_dir=self.path+'/.Tempdir'
-        self._data_access=S3ObjectDB(self.project,config_file="/home/nsiemer/pyiron/projects/config.json",group=self.s3path)
-        self.path_storage=['','']
-        self.data_sys='local'
+        #self.temp_dir = self.path+'/.Tempdir'
+        self._data_access = S3ObjectDB(self.project,
+                                       #config_file="/home/nsiemer/pyiron/projects/config.json",
+                                       group=self.s3path)
+        self.path_storage = [os.getcwd(), self.s3path]
         self._update_files()
 
 
     def _update_files(self):
+        self.files = list()
+        self.dirs = list()
         if self.data_sys == "local":
-            self.files = list()
-            self.dirs = list()
             if(os.path.isdir(self.path)):
                 for f in iglob(self.path+'/*'):
                     if os.path.isdir(f):
                         self.dirs.append(os.path.split(f)[1])
                     else:
-#                       self.files.append(f)
                         self.files.append(os.path.split(f)[1])
         else:
             self._data_access.open(self.path)
             self.files = self._data_access.list_nodes()
-            self.dirs = self._data_access.list_groups()
+            if not self.fix_s3_path:
+                self.dirs = self._data_access.list_groups()
 
     def widget(self):
+        #some color definitions:
+        checkbox_active_style = {"button_color": "#FF8888", 'font_weight': 'bold'}
+        checkbox_inactive_style = {"button_color": "#CCAAAA"}
         self.pathbox = widgets.HBox(layout=widgets.Layout(width='100%', justify_content='flex-start'))
-        self.box = widgets.VBox(layout=widgets.Layout(width='50%', height='100%',justify_content='flex-start'))
-        self.box2=widgets.Text(description="(rel) Path",width='min-content')
-        button=widgets.Button(description='Set Path', tooltip="Sets current path to provided string.")
-        button2=widgets.Button(description="Choose File(s)",width='min-content',
+        self.box = widgets.VBox(layout=widgets.Layout(width='50%', height='100%', justify_content='flex-start'))
+        self.box2 = widgets.Text(description="(rel) Path", width='min-content')
+        button = widgets.Button(description='Set Path', tooltip="Sets current path to provided string.")
+        button2 = widgets.Button(description="Choose File(s)", width='min-content',
                                tooltip='Loads currently activated files and all files '+
                                        'matching the provided string patten; wildcards allowed!')
-        button3=widgets.Button(description="Reset selection",width='min-content')
-        file_sys_button=widgets.Button(description='local',tooltip="Change to local filesystem",
-                                       icon="fa-database",layout=widgets.Layout(width='80px'),
-                                       style={'button_color': '#FF8888','font_weight': 'bold'})
-        file_sys_button2=widgets.Button(description='RDM',tooltip="Change to Research Data Management System",
-                                       icon="fa-database",layout=widgets.Layout(width='80px'),
-                                       style={'button_color': '#FFAAAA'})
+        button3 = widgets.Button(description="Reset selection",width='min-content')
+        file_sys_button = widgets.Button(description='local',tooltip="Change to local filesystem",
+                                       icon="fa-database",layout=widgets.Layout(width='80px'))
+        file_sys_button2 = widgets.Button(description='RDM',tooltip="Change to Research Data Management System",
+                                       icon="fa-database",layout=widgets.Layout(width='80px'))
+        if self.data_sys == "local":
+            file_sys_button.style = checkbox_active_style
+            file_sys_button2.style = checkbox_inactive_style
+        else:
+            file_sys_button.style = checkbox_inactive_style
+            file_sys_button2.style = checkbox_active_style
+
         def on_sys_change(b):
             if b.description == 'RDM':
-                if self.data_sys=='S3':
+                if self.data_sys == 'S3':
                     return
                 self._clickedFiles = []
                 self.path_storage[0]=self.path
                 self.path=self.path_storage[1]
-                b.style.button_color='#FF8888'
-                b.style.font_weight='bold'
-                file_sys_button.style.button_color='#FFAAAA'
-                file_sys_button.style.font_weight=''
-                self.data_sys='S3'
+                b.style = checkbox_active_style
+                file_sys_button.style = checkbox_inactive_style
+                if self.fix_s3_path:
+                    button.disabled = True
+                self.data_sys = 'S3'
                 self._update_files()
                 self._update(self.box)
-                self.box2_value=self.path
+                self.box2_value = self.path
                 return
             if b.description == 'local':
-                if self.data_sys=='local':
+                if self.data_sys == 'local':
                     return
                 self._clickedFiles = []
                 self.path_storage[1]=self.path
                 self.path=self.path_storage[0]
-                b.style.button_color='#FF8888'
-                b.style.font_weight='bold'
-                file_sys_button2.style.button_color='#FFAAAA'
-                file_sys_button2.style.font_weight=''
-                self.data_sys='local'
+                b.style = checkbox_active_style
+                button.disabled = False
+                file_sys_button2.style = checkbox_inactive_style
+                self.data_sys = 'local'
                 self._update_files()
                 self._update(self.box)
-                self.box2_value=self.path
+                self.box2_value = self.path
                 return
 
         def on_click(b):
@@ -148,44 +159,44 @@ class FileBrowser(object):
             with self.output:
                 print('')
             if b.description == 'Set Path':
-                if self.data_sys =='S3':
-                    path='/'+self.path
+                if self.data_sys == 'S3':
+                    path = '/'+self.path
                 else:
-                    path=self.path
-                if len(self.box2.value)==0:
+                    path = self.path
+                if len(self.box2.value) == 0:
                     with self.output:
                         print('No path given')
                     return
                 elif self.box2.value[0] != '/':
                     with self.output:
-                        print('current path=',path)
+                        print('current path=', path)
                     path=path+'/'+self.box2.value
                 else:
-                    path=self.box2.value
+                    path = self.box2.value
                 # check path consistency:
                 if (self.data_sys == 'local' and self.path.exists(path) ):
-                    self.path=os.path.abspath(path)
+                    self.path = os.path.abspath(path)
                 elif (self._data_access.is_dir(path[1:]) and self.data_sys == 'S3'):
-                    self.path=path[1:]
+                    self.path = path[1:]
                 else:
                     self.box2.__init__(description="(rel) Path",value='')
                     with self.output:
                         print('No valid path')
                     return
-                self.box2_value=self.path
+                self.box2_value = self.path
                 self._update_files()
                 self._update(self.box)
                 self.box2.__init__(description="(rel) Path",value='')
             if b.description == 'Choose File(s)':
-                if self.data_sys=='S3':
+                if self.data_sys == 'S3':
                     self._download_and_choose()
                     return
                 if len(self.box2.value) ==0:
-                    path=self.path
+                    path = self.path
                 elif self.box2.value[0] != '/':
-                    path=self.path+'/'+self.box2.value
+                    path = self.path+'/'+self.box2.value
                 else:
-                    path=self.box2.value
+                    path = self.box2.value
                 #print ('try to append:',self.box2_value)
                 appendlist = []
                 for f in iglob(path):
@@ -204,9 +215,9 @@ class FileBrowser(object):
                             print(i)
                     else:
                         print('No files chosen')
-            if b.description == 'Reset election':
-               self._clickedFiles=[]
-               self._update(self.box)
+            if b.description == 'Reset selection':
+                self._clickedFiles = []
+                self._update(self.box)
 
         self._update(self.box)
         button.on_click(on_click)
@@ -220,7 +231,7 @@ class FileBrowser(object):
     def list_data(self):
         return self.data
 
-    # TODO: convert to get Data object and use this instead:
+    # converted to get Data object and use this instead:
     # obj =  self._data_access.get(key)
     # data = obj['Body'].read()  the content of the Body is erased!
     # image = PIL.Image.open(io.BytesIO(data))
@@ -260,35 +271,45 @@ class FileBrowser(object):
                 print('No files chosen')
 
     def _update_pathbox(self,box):
+        path_color = '#DDDDAA'
+        home_color = '#999999'
         def on_click(b):
             self.path = b.path
             self.box2_value = self.path
             self._update_files()
             self._update(self.box)
             self.box2.__init__(description="(rel) Path", value='')
-        buttons=[]
-        tmppath=self.path
-        tmppath_old=self.path+'/'
+        buttons = []
+        tmppath = self.path
+        tmppath_old = self.path+'/'
         while tmppath != tmppath_old:
-            tmppath_old=tmppath
-            [tmppath,dir] = os.path.split(tmppath)
-            button=widgets.Button(description=dir+'/',layout=widgets.Layout(width='auto'))
-            button.style.button_color = '#DDDDAA'
-            button.path=tmppath_old
+            tmppath_old = tmppath
+            [tmppath, dir] = os.path.split(tmppath)
+            button = widgets.Button(description=dir+'/', layout=widgets.Layout(width='auto'))
+            button.style.button_color = path_color
+            button.path = tmppath_old
             button.on_click(on_click)
+            if self.fix_s3_path and self.data_sys == "S3":
+                button.disabled = True
             buttons.append(button)
-        button=widgets.Button(icon="fa-home",layout=widgets.Layout(width='auto'))
-        button.style.button_color='#999999'
+        button = widgets.Button(icon="fa-home", layout=widgets.Layout(width='auto'))
+        button.style.button_color = home_color
         if self.data_sys == 'local':
-            button.path=os.getcwd()
+            button.path = os.getcwd()
         else:
-            button.path=self.s3path
+            button.path = self.s3path
+            if self.fix_s3_path:
+                button.disabled = True
         button.on_click(on_click)
         buttons.append(button)
         buttons.reverse()
         box.children = tuple(buttons)
 
     def _update(self, box):
+        #color definitions
+        dir_color = '#9999FF'
+        file_chosen_color = '#FFBBBB'
+        file_color = '#DDDDDD'
         self.output.clear_output(True)
         def on_click(b):
             self.path = os.path.join(self.path, b.description)
@@ -296,15 +317,15 @@ class FileBrowser(object):
             self._update_files()
             self._update(box)
         def on_click_file(b):
-            f=os.path.join(self.path, b.description)
+            f = os.path.join(self.path, b.description)
             if self.data_sys == 'local':
                 self.output.clear_output(True)
                 Display_file(f, self.output)
             if f in self._clickedFiles:
-                b.style.button_color = '#DDDDDD'
+                b.style.button_color = file_color
                 self._clickedFiles.remove(f)
             else:
-                b.style.button_color = '#FFBBBB'
+                b.style.button_color = file_chosen_color
                 self._clickedFiles.append(f)
 
         buttons = []
@@ -314,16 +335,20 @@ class FileBrowser(object):
         #button.on_click(on_click)
         #buttons.append(button)
         for f in self.dirs:
-            button = widgets.Button(description=f,icon="fa-folder",layout=widgets.Layout(width='min-content', justify_content='flex-start'))
-            button.style.button_color = '#9999FF'
+            button = widgets.Button(description=f,
+                                    icon="fa-folder",
+                                    layout=widgets.Layout(width='min-content', justify_content='flex-start'))
+            button.style.button_color = dir_color
             button.on_click(on_click)
             buttons.append(button)
         for f in self.files:
-            button = widgets.Button(description=f,icon="fa-file-o",layout=widgets.Layout(width='min-content', justify_content='flex-start'))
-            if os.path.join(self.path,f) in self._clickedFiles:
-                button.style.button_color = '#FFBBBB'
+            button = widgets.Button(description=f,
+                                    icon="fa-file-o",
+                                    layout=widgets.Layout(width='min-content', justify_content='flex-start'))
+            if os.path.join(self.path, f) in self._clickedFiles:
+                button.style.button_color = file_chosen_color
             else:
-                button.style.button_color = '#DDDDDD'
+                button.style.button_color = file_color
             button.on_click(on_click_file)
             buttons.append(button)
         box.children = tuple(buttons)

@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pyiron_contrib.RDM.internal_widgets import MultiComboBox, MultiTextBox
 from pyiron_contrib.RDM.project import Project
+from pyiron_contrib.RDM.gui_data import FileBrowser
 from pyiron_base import InputList
 
 class GUI_RDM:
@@ -25,7 +26,12 @@ class GUI_RDM:
         self.rdm_project = ""
 
     def list_nodes(self):
-        return []
+        try:
+            nodes = [val for val in self.pr.project_info["Resources"].values()]
+            #    self.pr.project_info["Resources"]
+        except:
+            nodes = []
+        return nodes
 
     def list_groups(self):
         if self.pr is None:
@@ -118,10 +124,16 @@ class GUI_RDM:
         self._update_header(self.headerbox)
 
     def open_res(self, b):
-        pass
+        self.bodybox.children = tuple(
+            [FileBrowser(self.pr,
+                         s3path=self.rdm_project+b.description,
+                         fix_s3_path=True,
+                         storage_system='S3')
+                .widget()])
 
     def add_resource(self, b):
-        pass
+        add = GUI_AddRecource(project=self.pr, VBox=self.bodybox, origin=self)
+        add.gui()
 
     def add_project(self, b):
         add = GUI_AddProject(project=self.pr, VBox=self.bodybox, origin=self)
@@ -329,3 +341,49 @@ class GUI_AddProject():
             self.bodybox.children = tuple(widgets.HTML("Project added"))
 
 
+class GUI_AddRecource():
+    def __init__(self, project, VBox=None, origin=None):
+        if VBox is None:
+            self.bodybox = widgets.VBox()
+        else:
+            self.bodybox = VBox
+        self.pr = project
+        self.old_metadata = None
+        if hasattr(self.pr, 'metadata'):
+            if isinstance(self.pr.metadata, InputList):
+                if self.pr.metadata.has_keys():
+                    self.old_metadata = self.pr.metadata
+        if origin is not None:
+            self.origin = origin
+
+    def gui(self):
+        self._update(self.bodybox)
+        return self.bodybox
+
+    def _update(self, box, _metadata=None):
+        def on_click(b):
+            if b.description == "Submit":
+                try:
+                    self.pr.project_info["Resources"].append(Name_Field.value)
+                except KeyError:
+                    self.pr.project_info["Resources"] = [Name_Field.value]
+                self.pr._save_projectinfo()
+
+        childs = []
+        childs.append(widgets.HTML("<h2>Create Resource:</h2>"))
+
+        Name_Field = widgets.Text(
+            value='',
+            placeholder="Name",
+            description= "Name" + ":*",
+            disabled=False,
+            layout=widgets.Layout(width="80%"),
+            style={'description_width': '25%'}
+        )
+        childs.append(Name_Field)
+
+        Button = widgets.Button(description="Submit")
+        Button.on_click(on_click)
+        childs.append(Button)
+
+        box.children = tuple(childs)
