@@ -6,15 +6,10 @@ import fnmatch
 import json
 
 class S3ObjectDB(object):
-    def __init__(self, project, config_file = None, config_json = None, group = ''):
-        self._project=project.copy()
-        # Place to store the object ID from the pyiron database:
-        #TODO: implement properly
-        self.pyiron_metadata={"ID":"1"}
-        self.history=[]
-        config = {}
+    def __init__(self, config_file=None, config_json=None, group=''):
+        self.history = []
         if config_json is not None:
-            config=config_json
+            config = config_json
         else:
             if config_file is None:
                 print('WARN: No config given, trying config.json')
@@ -44,9 +39,9 @@ class S3ObjectDB(object):
             :class:`list`
         """
         groups = []
-        group_path_len=len(self.group.split('/'))-1
+        group_path_len = len(self.group.split('/'))-1
         for obj in self._list_objects():
-            rel_obj_path_spl=obj.key.split('/')[group_path_len:]
+            rel_obj_path_spl = obj.key.split('/')[group_path_len:]
             if len(rel_obj_path_spl) > 1:
                 groups.append(rel_obj_path_spl[0])
         return groups
@@ -72,9 +67,9 @@ class S3ObjectDB(object):
             "nodes": self.list_nodes(),
         }
 
-    def is_dir(self,path):
-        if len(path)>1 and path[-1]!='/':
-            path=path+'/'
+    def is_dir(self, path):
+        if len(path) > 1 and path[-1] != '/':
+            path = path+'/'
         for obj in self._list_all_obj_of_bucket():
             if path in obj.key:
                 if self.group+path in obj.key:
@@ -82,8 +77,8 @@ class S3ObjectDB(object):
                 if path == obj.key[:len(path)]:
                     return True
 
-    def is_file(self,path):
-        l=[]
+    def is_file(self, path):
+        l = []
         for obj in self._list_all_obj_of_bucket():
             l.append(obj.key)
         if path in l:
@@ -91,11 +86,10 @@ class S3ObjectDB(object):
         if self.group+path in l:
             return True
 
-
     def open(self, group):
-        if len(group)==0:
+        if len(group) == 0:
             self.group = group
-        elif group[-1]== '/':
+        elif group[-1] == '/':
             self.group = group
         else:
             self.group = group + '/'
@@ -110,17 +104,19 @@ class S3ObjectDB(object):
             print("Err: no history")
         self.group=self.history[-1]
 
-    def upload(self,files,metadata={}):
+    def upload(self, files, metadata=None):
         """
         Uploads files into the current group of the RDS
         Arguments:
-            :class:`list` : List of filenames to upload
+            files `list` : List of filenames to upload
+            metadata `dictionary`: metadata of the files (Not nested, only "str" type)
         """
-        meta={}
-        meta.update(self.pyiron_metadata)
-        meta.update(metadata)
+        if metadata is None:
+            metadata = {}
+
         for file in files:
-            [path,f]=os.path.split(file)
+            [path, f] = os.path.split(file)
+
             def printBytes(x):
                 print('{} {}/{} bytes'.format(f, x, s))
             s = os.path.getsize(file)
@@ -128,10 +124,10 @@ class S3ObjectDB(object):
             self.bucket.upload_file(
                 file,
                 self.group + f,
-                { "Metadata": meta}
+                {"Metadata": metadata}
             )
 
-    def download(self,files,targetpath="."):
+    def download(self, files, targetpath="."):
         """
         Download files from current group to local file system (current directory)
         Arguments:
@@ -140,18 +136,18 @@ class S3ObjectDB(object):
         if not os.path.exists(targetpath):
             os.mkdir(targetpath)
         for f in files:
-            filepath=os.path.join(targetpath,f.split("/")[-1])
-            print (filepath)
-            self.bucket.download_file(self.group+f,filepath)
+            filepath = os.path.join(targetpath, f.split("/")[-1])
+            print(filepath)
+            self.bucket.download_file(self.group+f, filepath)
 
-    def get_metadata(self,key):
+    def get_metadata(self, key):
         return self.bucket.Object(self.group + key).metadata
 
     def get(self,key):
         return self.bucket.Object(self.group + key).get()
 
     def _list_objects(self):
-        l=[]
+        l = []
         for obj in self.bucket.objects.filter(Prefix=self.group):
             l.append(obj)
         return l
@@ -162,28 +158,27 @@ class S3ObjectDB(object):
             print('{} {} {} bytes'.format(obj.key, obj.last_modified, obj.size))
 
     def _list_all_obj_of_bucket(self):
-        l=[]
+        l = []
         for obj in self.bucket.objects.all():
             l.append(obj)
         return l
 
-    def glob(self,path,relpath=False):
-        if relpath and  len(self.group) >0:
-            path=self.group+'/'+path
-        l=[]
+    def glob(self, path, relpath=False):
+        if relpath and len(self.group) > 0:
+            path = self.group+'/'+path
+        l = []
         for obj in self.bucket.objects.filter(Prefix=self.group):
-            if fnmatch.fnmatchcase(obj.key,path):
+            if fnmatch.fnmatchcase(obj.key, path):
                 l.append(obj.key)
         return l
 
-    def print_obj_info(self,objlist):
+    def print_obj_info(self, objlist):
         for obj in objlist:
             print('{} {} {} bytes'.format(obj.key, obj.last_modified, obj.size))
 
-
-    def remove_group(self,prefix=None,debug=False):
-        if prefix==None:
-            prefix=self.group
+    def remove_group(self, prefix=None, debug=False):
+        if prefix is None:
+            prefix = self.group
         if debug:
             print('\nDeleting all objects with sample prefix {}/{}.'.format(self.bucket.name, prefix))
         delete_responses = self.bucket.objects.filter(Prefix=prefix).delete()
@@ -200,6 +195,7 @@ class S3ObjectDB(object):
 
     def __repr__(self):
         return str(self.list_all())
+
 
 """
 Some infos about the bucket object:

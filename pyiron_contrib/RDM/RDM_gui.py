@@ -28,7 +28,6 @@ class GUI_RDM:
     def list_nodes(self):
         try:
             nodes = [val for val in self.pr.project_info["Resources"].values()]
-            #    self.pr.project_info["Resources"]
         except:
             nodes = []
         return nodes
@@ -125,8 +124,7 @@ class GUI_RDM:
 
     def open_res(self, b):
         self.bodybox.children = tuple(
-            [FileBrowser(self.pr,
-                         s3path=self.rdm_project+b.description,
+            [FileBrowser(s3path=self.rdm_project+b.description,
                          fix_s3_path=True,
                          storage_system='S3')
                 .widget()])
@@ -218,7 +216,7 @@ class GUI_AddProject():
             )#)
             Button = widgets.Button(description="Copy Metadata")
             Button.on_click(on_click)
-            Button2 = widgets.Button(description="Clear Metadata",height="auto")
+            Button2 = widgets.Button(description="Clear Metadata", height="auto")
             Button2.on_click(on_click)
             childs.append(widgets.HBox(
                 [widgets.VBox([Label, Label2],
