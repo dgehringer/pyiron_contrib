@@ -68,7 +68,7 @@ class Measurement(JobCore):
         --> E.g. data from one session using the same sample
     """
     def __init__(self, project, job_name):
-        super(JobCore, self).__init__(project, job_name)
+        super().__init__(project, job_name)
         self.__name__ = "Measurement"
         self._type = None
         self.sample = None
