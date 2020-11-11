@@ -27,7 +27,7 @@ class GUI_RDM:
 
     def list_nodes(self):
         try:
-            nodes = [val for val in self.pr.project_info["Resources"].values()]
+            nodes = [str(val) for val in self.pr.project_info["Resources"].keys()]
         except:
             nodes = []
         return nodes
@@ -123,11 +123,10 @@ class GUI_RDM:
         self._update_header(self.headerbox)
 
     def open_res(self, b):
-        self.bodybox.children = tuple(
-            [FileBrowser(s3path=self.rdm_project+b.description,
-                         fix_s3_path=True,
-                         storage_system='S3')
-                .widget()])
+        filebrowser = FileBrowser(s3path=self.rdm_project + b.description,
+                     fix_s3_path=True,
+                     storage_system='S3')
+        self.bodybox.children = tuple([filebrowser.widget()])
 
     def add_resource(self, b):
         add = GUI_AddRecource(project=self.pr, VBox=self.bodybox, origin=self)
@@ -175,6 +174,9 @@ class GUI_AddProject():
                 self._update(box, _metadata=self.old_metadata)
             if b.description == 'Clear Metadata':
                 self._update(box)
+            if b.description == 'Cancel':
+                if self.origin is not None:
+                    self.origin.update(bodybox=self.bodybox)
 
         childs = []
         childs.append(widgets.HTML("<h2>Create Project:</h2>"))
@@ -312,11 +314,11 @@ class GUI_AddProject():
             style={'description_width': '30%'}
         ))
 
-        SubmitButton = widgets.Button(
-            description="Submit"
-        )
+        SubmitButton = widgets.Button(description="Submit")
+        CalcelButton = widgets.Button(description="Cancel")
         SubmitButton.on_click(on_click)
-        childs.append(SubmitButton)
+        CalcelButton.on_click(on_click)
+        childs.append(widgets.HBox([SubmitButton, CalcelButton]))
         box.children = tuple(childs)
 
     def add_proj(self, dic):
@@ -336,7 +338,7 @@ class GUI_AddProject():
         if self.origin is not None:
             self.origin.update(bodybox=self.bodybox)
         else:
-            self.bodybox.children = tuple(widgets.HTML("Project added"))
+            self.bodybox.children = tuple([widgets.HTML("Project added")])
 
 
 class GUI_AddRecource():
@@ -362,10 +364,18 @@ class GUI_AddRecource():
         def on_click(b):
             if b.description == "Submit":
                 try:
-                    self.pr.project_info["Resources"].append(Name_Field.value)
+                    self.pr.project_info["Resources"][Name_Field.value] = metadata
                 except KeyError:
-                    self.pr.project_info["Resources"] = [Name_Field.value]
+                    self.pr.project_info["Resources"] = InputList()
+                    self.pr.project_info["Resources"][Name_Field.value] = metadata
                 self.pr._save_projectinfo()
+                if self.origin is not None:
+                    self.origin.update(bodybox=self.bodybox)
+                else:
+                    self.bodybox.children = tuple([widgets.HTML("Resource added")])
+            if b.description == 'Cancel':
+                if self.origin is not None:
+                    self.origin.update(bodybox=self.bodybox)
 
         childs = []
         childs.append(widgets.HTML("<h2>Create Resource:</h2>"))
@@ -380,8 +390,15 @@ class GUI_AddRecource():
         )
         childs.append(Name_Field)
 
-        Button = widgets.Button(description="Submit")
-        Button.on_click(on_click)
-        childs.append(Button)
+        if _metadata is None:
+            metadata = {}
+        else:
+            metadata = _metadata.to_builtin()
+
+        SubmitButton = widgets.Button(description="Submit")
+        CalcelButton = widgets.Button(description="Cancel")
+        SubmitButton.on_click(on_click)
+        CalcelButton.on_click(on_click)
+        childs.append(widgets.HBox([SubmitButton, CalcelButton]))
 
         box.children = tuple(childs)
