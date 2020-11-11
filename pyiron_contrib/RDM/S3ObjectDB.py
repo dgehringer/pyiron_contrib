@@ -1,12 +1,26 @@
 import boto3
 from botocore.client import Config
-#from pyiron_base import PyironObject
 import os
 import fnmatch
 import json
 
 class S3ObjectDB(object):
     def __init__(self, config_file=None, config_json=None, group=''):
+        """
+            Establishes connection to a specific 'bucket' of a S3 type object store.
+            Args:
+                config_file (str/None):  path to a json configuration file with login credentials for the bucket
+                config_json (dict/None): directly providing credentials as dict; overwrites config_file
+                group (str): Initial group in the bucket which is opened.
+
+            The configuration needs to provide the following information:
+                {
+                access_key : ""
+                secret_key : ""
+                endpoint : ""
+                bucket : ""
+                }
+        """
         self.history = []
         if config_json is not None:
             config = config_json
@@ -28,15 +42,18 @@ class S3ObjectDB(object):
         self.bucket = s3resource.Bucket(bucket_name)
         self.open(group)
 
-    def print_bucket_info(self): 
+    def print_bucket_info(self):
+        """
+            Print name of the associated bucket
+        """
         print('Bucket name: {}'.format(self.bucket.name))
 
     def list_groups(self):
         """
-        Return a list of 'directories' ( string followed by / )
+        List 'directories' ( string followed by / ) in the current group
 
         Returns:
-            :class:`list`
+            list: list of directory names
         """
         groups = []
         group_path_len = len(self.group.split('/'))-1
@@ -48,10 +65,10 @@ class S3ObjectDB(object):
 
     def list_nodes(self):
         """
-        Return a list of 'files' ( string not followed by / )
+        List of 'files' ( string not followed by / ) in the current group
 
         Returns:
-            :class:`list`
+            list: list of file names
         """
         nodes = []
         group_path_len = len(self.group.split('/')) - 1
@@ -62,15 +79,28 @@ class S3ObjectDB(object):
         return nodes
 
     def list_all(self):
+        """
+        Combination of list_groups() and list_nodes()  in one dictionary with the corresponding keys:
+        - 'groups': Sub-folder/ -groups.
+        - 'nodes': Files in the current group
+
+        Returns:
+            dict: dictionary with all items in the group.
+        """
         return {
             "groups": self.list_groups(),
             "nodes": self.list_nodes(),
         }
 
     def is_dir(self, path):
+        """
+        Check if given path is a directory.
+        Returns:
+            bool
+        """
         if len(path) > 1 and path[-1] != '/':
             path = path+'/'
-        for obj in self._list_all_obj_of_bucket():
+        for obj in self._list_all_files_of_bucket():
             if path in obj.key:
                 if self.group+path in obj.key:
                     return True
@@ -78,8 +108,13 @@ class S3ObjectDB(object):
                     return True
 
     def is_file(self, path):
+        """
+        Check if given path is a file.
+        Returns:
+            bool
+        """
         l = []
-        for obj in self._list_all_obj_of_bucket():
+        for obj in self._list_all_files_of_bucket():
             l.append(obj.key)
         if path in l:
             return True
@@ -87,6 +122,9 @@ class S3ObjectDB(object):
             return True
 
     def open(self, group):
+        """
+        Opens the provided group (create group if not yet present).
+        """
         if len(group) == 0:
             self.group = group
         elif group[-1] == '/':
@@ -96,13 +134,16 @@ class S3ObjectDB(object):
         self.history.append(self.group)
 
     def close(self):
+        """
+        Close current group and open previous group.
+        """
         if len(self.history) > 1:
             del self.history[-1]
         elif len(self.history) == 1:
             self.history[0] = ""
         else:
             print("Err: no history")
-        self.group=self.history[-1]
+        self.group = self.history[-1]
 
     def upload(self, files, metadata=None):
         """
@@ -115,15 +156,15 @@ class S3ObjectDB(object):
             metadata = {}
 
         for file in files:
-            [path, f] = os.path.split(file)
+            [path, filename] = os.path.split(file)
 
-            def printBytes(x):
-                print('{} {}/{} bytes'.format(f, x, s))
-            s = os.path.getsize(file)
+            #def printBytes(x):
+            #    print('{} {}/{} bytes'.format(filename, x, s))
+            #s = os.path.getsize(file)
             # Upload file accepts extra_args: Dictionary with predefined keys. One key is Metadata
             self.bucket.upload_file(
                 file,
-                self.group + f,
+                self.group + filename,
                 {"Metadata": metadata}
             )
 
@@ -140,11 +181,19 @@ class S3ObjectDB(object):
             print(filepath)
             self.bucket.download_file(self.group+f, filepath)
 
-    def get_metadata(self, key):
-        return self.bucket.Object(self.group + key).metadata
+    def get_metadata(self, file):
+        """
+        Returns:
+             dict: metadata field associated with file
+        """
+        return self.bucket.Object(self.group + file).metadata
 
-    def get(self,key):
-        return self.bucket.Object(self.group + key).get()
+    def get(self, file):
+        """
+        Returns:
+             Object containing a file
+        """
+        return self.bucket.Object(self.group + file).get()
 
     def _list_objects(self):
         l = []
@@ -153,17 +202,25 @@ class S3ObjectDB(object):
         return l
 
     def print_fileinfos(self):
-        # prints the filename, last modified date and size for _all_ files in the current group
+        """
+            Prints the filename, last modified date and size for all files in the current group,
+            recursively including sub groups
+        """
         for obj in self.bucket.objects.filter(Prefix=self.group):
             print('{} {} {} bytes'.format(obj.key, obj.last_modified, obj.size))
 
-    def _list_all_obj_of_bucket(self):
+    def _list_all_files_of_bucket(self):
         l = []
         for obj in self.bucket.objects.all():
             l.append(obj)
         return l
 
     def glob(self, path, relpath=False):
+        """
+            Return a list of paths matching a pathname pattern.
+
+            The pattern may contain simple shell-style wildcards a la fnmatch.
+        """
         if relpath and len(self.group) > 0:
             path = self.group+'/'+path
         l = []
@@ -172,11 +229,17 @@ class S3ObjectDB(object):
                 l.append(obj.key)
         return l
 
-    def print_obj_info(self, objlist):
-        for obj in objlist:
+    def print_file_info(self, filelist):
+        """
+            Prints filename, last_modified, and size of each file in the provided list of files
+        """
+        for obj in filelist:
             print('{} {} {} bytes'.format(obj.key, obj.last_modified, obj.size))
 
     def remove_group(self, prefix=None, debug=False):
+        """
+            Deletes the current group with all it's content recursively.
+        """
         if prefix is None:
             prefix = self.group
         if debug:
