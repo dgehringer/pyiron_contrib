@@ -181,19 +181,25 @@ class S3ObjectDB(object):
             print(filepath)
             self.bucket.download_file(self.group+f, filepath)
 
-    def get_metadata(self, file):
+    def get_metadata(self, file, abspath=False):
         """
         Returns:
              dict: metadata field associated with file
         """
-        return self.bucket.Object(self.group + file).metadata
+        if abspath:
+            return self.bucket.Object(file).metadata
+        else:
+            return self.bucket.Object(self.group + file).metadata
 
-    def get(self, file):
+    def get(self, file, abspath=False):
         """
         Returns:
              Object containing a file
         """
-        return self.bucket.Object(self.group + file).get()
+        if abspath:
+            return self.bucket.Object(file).get()
+        else:
+            return self.bucket.Object(self.group + file).get()
 
     def _list_objects(self):
         l = []
