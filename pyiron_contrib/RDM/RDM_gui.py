@@ -22,8 +22,10 @@ class GUI_RDM:
         if project is not None:
             self.default_proj = project.base_name
         self.pr = project
-        self.list_groups()
         self.rdm_project = ""
+        self.headerbox = widgets.HBox()
+        self.bodybox = widgets.VBox()
+        self.footerbox = widgets.HBox()
 
     def list_nodes(self):
         try:
@@ -40,10 +42,7 @@ class GUI_RDM:
             return self.pr.list_groups()
 
     def gui(self):
-        self.headerbox = widgets.HBox()
         Hseperator = widgets.HBox(layout=widgets.Layout(border="solid 1px"))
-        self.bodybox = widgets.VBox()
-        self.footerbox = widgets.HBox()
         self._update_header(self.headerbox)
         self._update_body(self.bodybox)
         self.box.children = tuple([self.headerbox, Hseperator, self.bodybox, self.footerbox])
@@ -126,7 +125,7 @@ class GUI_RDM:
         filebrowser = FileBrowser(s3path=self.rdm_project + b.description,
                      fix_s3_path=True,
                      storage_system='S3')
-        self.bodybox.children = tuple([filebrowser.widget()])
+        self.bodybox.children = tuple([filebrowser.gui()])
 
     def add_resource(self, b):
         add = GUI_AddRecource(project=self.pr, VBox=self.bodybox, origin=self)
