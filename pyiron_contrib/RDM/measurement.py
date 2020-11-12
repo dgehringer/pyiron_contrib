@@ -39,8 +39,8 @@ class MeasuredData:
                 self.filetype = filetype[1:]
         else:
             self.filetype = filetype
-        if storedata:
-            with open(source,"rb") as f:
+        if storedata and data is None:
+            with open(source, "rb") as f:
                 self._data = f.read()
         self.metadata = metadata
 
@@ -60,6 +60,9 @@ class MeasuredData:
         if self.filetype.upper() in ["TIF", "TIFF"]:
             return np.array(Image.open(io.BytesIO(self._data)))
         self.data()
+
+    def __repr__(self):
+        return "pyiron-MeasuredData containing " + self.filename
 
 class Measurement(JobCore):
     """

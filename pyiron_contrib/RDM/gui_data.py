@@ -12,13 +12,15 @@ from pyiron_contrib.image.image import Image
 from pyiron_contrib.RDM.measurement import MeasuredData
 
 
-class Display_file:
+class DisplayFile:
     """
         Class to display a file localted at path in the given outwidget
     """
     # TODO:
     '''
-/home/nsiemer/pyiron.git/pyiron_contrib/pyiron_contrib/image/image.py:259: RuntimeWarning: More than 20 figures have been opened. Figures created through the pyplot interface (`matplotlib.pyplot.figure`) are retained until explicitly closed and may consume too much memory. (To control this warning, see the rcParam `figure.max_open_warning`).
+/home/nsiemer/pyiron.git/pyiron_contrib/pyiron_contrib/image/image.py:259: RuntimeWarning: More than 20 figures have been opened.
+ Figures created through the pyplot interface (`matplotlib.pyplot.figure`) are retained until explicitly closed and may consume too much memory. 
+ (To control this warning, see the rcParam `figure.max_open_warning`).
   fig, ax = plt.subplots(**subplots_kwargs)
     '''
 
@@ -64,6 +66,20 @@ class Display_file:
         except:
             with self.output:
                 print(self.path)
+
+
+class DisplayMetadata:
+    def __init__(self, metadata, outwidget):
+        self.metadata = metadata
+        self.output = outwidget
+        self.display()
+
+    def display(self):
+        with self.output:
+            print("Metadata:")
+            print("------------------------")
+            for key, value in self.metadata.items():
+                print(key + ': ' + value)
 
 
 class FileBrowser(object):
@@ -250,8 +266,6 @@ class FileBrowser(object):
         return self.data
 
     def _download_data_from_s3(self):
-        # appendlist has _full_ path in the bucket -> download from top directory.
-        self._data_access.open("")
         for file in self._clickedFiles:
             filename = os.path.split(file)[1]
             filetype = os.path.splitext(filename)[1]
@@ -259,11 +273,10 @@ class FileBrowser(object):
                 filetype = None
             else:
                 filetype = filetype[1:]
-            obj = self._data_access.get(file)
+            obj = self._data_access.get(file, abspath=True)
             data = MeasuredData(data=obj['Body'].read(), filename=filename, filetype=filetype,
                                 metadata=obj["Metadata"])
             self.data.append(data)
-        self._data_access.close()
 
     def _select_files(self):
         if len(self.path_string_box.value) == 0:
@@ -343,9 +356,12 @@ class FileBrowser(object):
 
         def on_click_file(b):
             f = os.path.join(self.path, b.description)
+            self.output.clear_output(True)
             if self.data_sys == 'local':
-                self.output.clear_output(True)
-                Display_file(f, self.output)
+                DisplayFile(f, self.output)
+            else:
+                metadata = self._data_access.get_metadata(f, abspath=True)
+                DisplayMetadata(metadata, self.output)
             if f in self._clickedFiles:
                 b.style.button_color = file_color
                 self._clickedFiles.remove(f)
