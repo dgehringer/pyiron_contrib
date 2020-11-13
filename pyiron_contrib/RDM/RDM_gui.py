@@ -139,6 +139,7 @@ class GUI_RDM:
 class GUI_Resource():
     def __init__(self, resource_path, project=None, VBox=None, origin=None):
         self.path = resource_path
+        self.filesystem_switch = "local"
         if VBox is None:
             self.bodybox = widgets.VBox()
         else:
@@ -146,17 +147,47 @@ class GUI_Resource():
         self.pr = project
         if origin is not None:
             self.origin = origin
-        self.filebrowser = FileBrowser(s3path=self.path,
-                                  fix_s3_path=True,
-                                  fix_storage_sys=True,
-                                  storage_system='S3')
+        self.filebrowser_box = widgets.VBox(layput=widgets.Layout(width="70%",
+                                            border="solid 0.5px lightgray"))
+        self.metadata_box = widgets.VBox(layout=widgets.Layout(width="30%"))
+        self.filebrowser = FileBrowser(Vbox=self.filebrowser_box,
+                                       s3path=self.path,
+                                       fix_s3_path=True,
+                                       fix_storage_sys=True,
+                                       storage_system='S3')
+        self.optionbox = widgets.HBox()
+        self.upload_button = widgets.Button(
+            description="Upload New Data",
+            tooltip="Choose Data from local filesystem to upload"
+        )
+        self.upload_button.on_click(self._upload_button_clicked)
 
     def gui(self):
         self._update_body(self.bodybox)
+        self._update_optionbox(self.optionbox)
         return self.bodybox
 
+    def upload_data(self):
+        self.filesystem_switch = "local"
+
+    def _upload_button_clicked(self, b):
+        if self.filesystem_switch == 'S3':
+            self.upload_data()
+        else:
+            self.filesystem_switch = "S3"
+        self.filebrowser.configure(storage_system=self.filesystem_switch)
+
+    def _update_optionbox(self, optionbox):
+        if self.filesystem_switch == "local":
+            self.upload_button.tooltip = "Choose Data from local filesystem to upload"
+        else:
+            self.upload_button.tooltip = "Upload Data from local filesystem"
+        optionbox.children = tuple([self.upload_button])
+
     def _update_body(self, bodybox):
-        bodybox.children = tuple([self.filebrowser.gui()])
+        childs = [widgets.HBox([self.filebrowser.gui(), self.metadata_box])]
+        childs.append(self.optionbox)
+        bodybox.children = tuple(childs)
 
 
 class GUI_AddProject():

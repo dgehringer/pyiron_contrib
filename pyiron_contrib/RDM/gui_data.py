@@ -201,7 +201,8 @@ class FileBrowser(object):
         self._update_filebox(self.filebox)
         body = widgets.HBox([self.filebox, self.output],
                             layout=widgets.Layout(
-                                height='800px'
+                                min_height='100px',
+                                max_height='800px'
                             ))
         Vbox.children = tuple([self.optionbox, self.pathbox, body])
 
