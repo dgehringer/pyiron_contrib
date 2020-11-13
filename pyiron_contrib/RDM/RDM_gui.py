@@ -122,10 +122,11 @@ class GUI_RDM:
         self._update_header(self.headerbox)
 
     def open_res(self, b):
-        filebrowser = FileBrowser(s3path=self.rdm_project + b.description,
-                     fix_s3_path=True,
-                     storage_system='S3')
-        self.bodybox.children = tuple([filebrowser.gui()])
+        res = GUI_Resource(resource_path=self.rdm_project + b.description,
+                           project=self.pr,
+                           VBox=self.bodybox,
+                           origin=self)
+        res.gui()
 
     def add_resource(self, b):
         add = GUI_AddRecource(project=self.pr, VBox=self.bodybox, origin=self)
@@ -134,6 +135,28 @@ class GUI_RDM:
     def add_project(self, b):
         add = GUI_AddProject(project=self.pr, VBox=self.bodybox, origin=self)
         add.gui()
+
+class GUI_Resource():
+    def __init__(self, resource_path, project=None, VBox=None, origin=None):
+        self.path = resource_path
+        if VBox is None:
+            self.bodybox = widgets.VBox()
+        else:
+            self.bodybox = VBox
+        self.pr = project
+        if origin is not None:
+            self.origin = origin
+        self.filebrowser = FileBrowser(s3path=self.path,
+                                  fix_s3_path=True,
+                                  fix_storage_sys=True,
+                                  storage_system='S3')
+
+    def gui(self):
+        self._update_body(self.bodybox)
+        return self.bodybox
+
+    def _update_body(self, bodybox):
+        bodybox.children = tuple([self.filebrowser.gui()])
 
 
 class GUI_AddProject():

@@ -213,7 +213,7 @@ class FileBrowser(object):
                 b.style = checkbox_active_style
                 file_sys_button_local.style = checkbox_inactive_style
                 if self.fix_s3_path:
-                    button.disabled = True
+                    set_path_button.disabled = True
                 self.data_sys = 'S3'
                 self._update_files()
                 self._update_filebox(self.filebox)
@@ -225,7 +225,7 @@ class FileBrowser(object):
                 self.path_storage[1] = self.path
                 self.path = self.path_storage[0]
                 b.style = checkbox_active_style
-                button.disabled = False
+                set_path_button.disabled = False
                 file_sys_button_S3.style = checkbox_inactive_style
                 self.data_sys = 'local'
                 self._update_files()
@@ -257,9 +257,12 @@ class FileBrowser(object):
         else:
             childs = [file_sys_button_local, file_sys_button_S3, self.path_string_box]
 
-        button = widgets.Button(description='Set Path', tooltip="Sets current path to provided string.")
-        button.on_click(self._click_option_button)
-        childs.append(button)
+        set_path_button = widgets.Button(description='Set Path', tooltip="Sets current path to provided string.")
+        set_path_button.on_click(self._click_option_button)
+        if self.fix_s3_path and self.data_sys == "S3":
+            set_path_button.disabled = True
+        if not (self.fix_s3_path and self.fix_storage_sys and self.data_sys == "S3"):
+            childs.append(set_path_button)
         button = widgets.Button(description="Select File(s)", width='min-content',
                                  tooltip='Selects all files ' +
                                          'matching the provided string patten; wildcards allowed.')
@@ -277,6 +280,8 @@ class FileBrowser(object):
             print('')
         if b.description == 'Set Path':
             if self.data_sys == 'S3':
+                if self.fix_s3_path:
+                    return
                 path = '/' + self.path
             else:
                 path = self.path
