@@ -93,7 +93,23 @@ class FileBrowser(object):
     # ToDo:
     #           Need upload method - upon choose files > upload them, ask for meta-data  >> Convert to own class <<
     #                                                                                   Needed for File upload to S3
-    def __init__(self, Vbox=None, s3path="", fix_s3_path=False, storage_system="local", S3_config_file=None):
+    def __init__(self,
+                 Vbox=None,
+                 s3path="",
+                 fix_s3_path=False,
+                 storage_system="local",
+                 fix_storage_sys=False,
+                 S3_config_file=None
+                 ):
+        """
+            Filebrowser to browse the local or a remote (S3-based) file system.
+            Args:
+              s3path (str): Starting path within the remote file system.
+              fix_s3_path (bool): If True the path in the remote file system cannot be changed.
+              storage_system (str): The filesystem to access (fist) either "local" or "S3".
+              fix_storage_sys (bool): If True the file system cannot be changed.
+              S3_config_file (str): path to a json configuration file with login credentials for the remote file system.
+        """
         if Vbox is None:
             self.box = widgets.VBox()
         else:
@@ -108,6 +124,7 @@ class FileBrowser(object):
         self.output = widgets.Output(layout=widgets.Layout(width='50%', height='100%'))
         self._clickedFiles = []
         self.data = []
+        self.fix_storage_sys = fix_storage_sys
         self._data_access = S3ObjectDB(config_file=S3_config_file,
                                        group=self.s3path)
         self.path_storage = [os.getcwd(), self.s3path]
@@ -116,6 +133,43 @@ class FileBrowser(object):
         self.optionbox = widgets.HBox()
         self.filebox = widgets.VBox(layout=widgets.Layout(width='50%', height='100%', justify_content='flex-start'))
         self.path_string_box = widgets.Text(description="(rel) Path", width='min-content')
+        self.update()
+
+    def configure(self,
+                 s3path=None,
+                 fix_s3_path=None,
+                 storage_system=None,
+                 fix_storage_sys=None,
+                 ):
+        """
+            Reconfigure and refresh Filebrowser.
+            Args:
+              s3path (str/None): Path within the remote file system.
+              fix_s3_path (bool): If True the path in the remote file system cannot be changed.
+              storage_system (str/None): The filesystem to access (first): either "local" or "S3".
+              fix_storage_sys (bool): If True the file system cannot be changed.
+        """
+        if s3path is not None:
+            self.s3path = s3path
+        if fix_s3_path is not None:
+            self.fix_s3_path = fix_s3_path
+        if storage_system is not None:
+            if storage_system == "S3" and self.data_sys == "local":
+                self.path_storage[0] = self.path
+                self.path = self.path_storage[1]
+            elif storage_system == "local" and self.data_sys == "S3":
+                self.path_storage[1] = self.path
+                self.path = self.path_storage[0]
+            self.data_sys = storage_system
+        if fix_storage_sys is not None:
+            self.fix_storage_sys = fix_storage_sys
+
+        if s3path is not None:
+            if self.data_sys == "S3":
+                self.path = self.s3path
+            else:
+                self.path_storage[1] = self.s3path
+        self._update_files()
         self.update()
 
     def _update_files(self):
@@ -142,11 +196,11 @@ class FileBrowser(object):
         if Vbox is None:
             Vbox = self.box
         self._update_files()
-        self._update_pathbox(self.pathbox)
+        #self._update_pathbox(self.pathbox)
         self._update_optionbox(self.optionbox)
         self._update_filebox(self.filebox)
         body = widgets.HBox([self.filebox, self.output])
-        Vbox.children = tuple([self.optionbox,self.pathbox,body])
+        Vbox.children = tuple([self.optionbox, self.pathbox, body])
 
     def _update_optionbox(self, optionbox):
         def on_sys_change(b):
@@ -157,7 +211,7 @@ class FileBrowser(object):
                 self.path_storage[0] = self.path
                 self.path = self.path_storage[1]
                 b.style = checkbox_active_style
-                file_sys_button.style = checkbox_inactive_style
+                file_sys_button_local.style = checkbox_inactive_style
                 if self.fix_s3_path:
                     button.disabled = True
                 self.data_sys = 'S3'
@@ -172,7 +226,7 @@ class FileBrowser(object):
                 self.path = self.path_storage[0]
                 b.style = checkbox_active_style
                 button.disabled = False
-                file_sys_button2.style = checkbox_inactive_style
+                file_sys_button_S3.style = checkbox_inactive_style
                 self.data_sys = 'local'
                 self._update_files()
                 self._update_filebox(self.filebox)
@@ -181,21 +235,27 @@ class FileBrowser(object):
         checkbox_active_style = {"button_color": "#FF8888", 'font_weight': 'bold'}
         checkbox_inactive_style = {"button_color": "#CCAAAA"}
 
-        file_sys_button = widgets.Button(description='local', tooltip="Change to local filesystem",
+        file_sys_button_local = widgets.Button(description='local', tooltip="Change to local filesystem",
                                          icon="fa-database", layout=widgets.Layout(width='80px'))
-        file_sys_button2 = widgets.Button(description='RDM', tooltip="Change to Research Data Management System",
+        file_sys_button_S3 = widgets.Button(description='RDM', tooltip="Change to Research Data Management System",
                                           icon="fa-database", layout=widgets.Layout(width='80px'))
         if self.data_sys == "local":
-            file_sys_button.style = checkbox_active_style
-            file_sys_button2.style = checkbox_inactive_style
+            file_sys_button_local.style = checkbox_active_style
+            file_sys_button_S3.style = checkbox_inactive_style
         else:
-            file_sys_button.style = checkbox_inactive_style
-            file_sys_button2.style = checkbox_active_style
+            file_sys_button_local.style = checkbox_inactive_style
+            file_sys_button_S3.style = checkbox_active_style
 
-        file_sys_button.on_click(on_sys_change)
-        file_sys_button2.on_click(on_sys_change)
+        file_sys_button_local.on_click(on_sys_change)
+        file_sys_button_S3.on_click(on_sys_change)
 
-        childs = [file_sys_button, file_sys_button2, self.path_string_box]
+        if self.fix_storage_sys:
+            if self.data_sys == "local":
+                childs = [file_sys_button_local,  self.path_string_box]
+            else:
+                childs = [file_sys_button_S3,  self.path_string_box]
+        else:
+            childs = [file_sys_button_local, file_sys_button_S3, self.path_string_box]
 
         button = widgets.Button(description='Set Path', tooltip="Sets current path to provided string.")
         button.on_click(self._click_option_button)
