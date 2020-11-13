@@ -199,7 +199,10 @@ class FileBrowser(object):
         #self._update_pathbox(self.pathbox)
         self._update_optionbox(self.optionbox)
         self._update_filebox(self.filebox)
-        body = widgets.HBox([self.filebox, self.output])
+        body = widgets.HBox([self.filebox, self.output],
+                            layout=widgets.Layout(
+                                height='800px'
+                            ))
         Vbox.children = tuple([self.optionbox, self.pathbox, body])
 
     def _update_optionbox(self, optionbox):
@@ -436,6 +439,8 @@ class FileBrowser(object):
 
         buttons = []
         item_layout = widgets.Layout(width='80%',
+                                     height='30px',
+                                     min_height='24px',
                                      display='flex',
                                      align_items="center",
                                      justify_content='flex-start')
