@@ -16,7 +16,7 @@ class MeasuredData:
     """
     def __init__(self, source=None, data=None, filename=None, metadata=None, filetype=None, storedata=False):
         if (source is None) and (data is None):
-            print("Err: no data given")
+            raise ValueError("No data given")
         if data is None:
             self.hasdata = False
         else:
@@ -27,8 +27,7 @@ class MeasuredData:
             self.filename = os.path.split(source)[1]
             self.source = source
         elif filename is None:
-            print("Err: No filename given")
-            self.filename = None
+            raise ValueError("No filename given")
         else:
             self.filename = filename
         if (filetype is None) and (self.filename is not None):
@@ -40,15 +39,19 @@ class MeasuredData:
         else:
             self.filetype = filetype
         if storedata and data is None:
-            with open(source, "rb") as f:
-                self._data = f.read()
+            self._data = self._read_source()
         self.metadata = metadata
+
+    def _read_source(self):
+        with open(self.source, "rb") as f:
+            content = f.read()
+        return content
 
     def data(self):
         if self.hasdata:
             return self._data
         else:
-            return self.source
+            self._read_source()
 
     def data_as_np_array(self):
         """
