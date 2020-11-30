@@ -7,6 +7,18 @@ from pyiron_contrib.RDM.project import Project
 from pyiron_contrib.RDM.gui_data import FileBrowser
 from pyiron_base import InputList
 
+#TODO: Get rid of the hard-coded dictionary!
+TBR_Metadata_Dict = {
+    "Filename": ["", None, "str", "hidden"],
+    "Owner": ["Me", None, "str", "normal"],
+    "Project:": ["SFB", None, "str", "fixed"],
+    "PI": [["Someone"], None, "strlist", "normal"],
+    "Field": [["Theochem", "Physics"], ["Theochem", "Physics", "Arts", "Whatever"], "strlist", "fixed"],
+    "Bench": ["Some_Table", ["Some_Table", "Another Table"], "radio", "normal"],
+    "PyironID": ["1", None, "str", "fixed"]
+}
+
+
 class GUI_RDM:
     """
     Access to the Research Data Management (RDM) system
@@ -139,7 +151,7 @@ class GUI_RDM:
 class GUI_Resource():
     def __init__(self, resource_path, project=None, VBox=None, origin=None):
         self.path = resource_path
-        self.filesystem_switch = "local"
+        self.displayed_filesystem = "S3"
         if VBox is None:
             self.bodybox = widgets.VBox()
         else:
@@ -147,9 +159,9 @@ class GUI_Resource():
         self.pr = project
         if origin is not None:
             self.origin = origin
-        self.filebrowser_box = widgets.VBox(layput=widgets.Layout(width="70%",
+        self.filebrowser_box = widgets.VBox(layput=widgets.Layout(width="67%",
                                             border="solid 0.5px lightgray"))
-        self.metadata_box = widgets.VBox(layout=widgets.Layout(width="30%"))
+        self.metadata_box = widgets.VBox(layout=widgets.Layout(width="33%"))
         self.filebrowser = FileBrowser(Vbox=self.filebrowser_box,
                                        s3path=self.path,
                                        fix_s3_path=True,
@@ -160,28 +172,113 @@ class GUI_Resource():
             description="Upload New Data",
             tooltip="Choose Data from local filesystem to upload"
         )
+        self.upload_button.click_counter = 0
         self.upload_button.on_click(self._upload_button_clicked)
 
     def gui(self):
         self._update_body(self.bodybox)
         self._update_optionbox(self.optionbox)
+        self._update_metadatabox(self.metadata_box)
         return self.bodybox
 
+    def _update_metadatabox(self, metabox, metadata_dict=None):
+        """
+        Update the provided Vbox (intended for the metadata box) using a dictionary of metadata-fields:
+        Args:
+            metabox: widgets.Vbox whose children will be overwritten
+            metadata_dict: dictionary/InputList containing metadata fields
+        The dictionary has to have the following structure:
+        {Field_Name: [ item(s), option(s), fieldtype, status ]},
+            where fieldtype is in ["str","int","strlist","float","date","radiobox"]
+            and status is in ["hidden", "fixed", "normal"]
+        """
+        if metadata_dict is None:
+            metabox.children = tuple()
+            return
+        childs = [widgets.HTML("<h3>File Metadata</h3>")]
+        for name, value in metadata_dict.items():
+            if value[3] == "fixed":
+                disabled = True
+            else:
+                disabled = False
+
+            if value[2] == "str":
+                child = widgets.Text(
+                    description=name,
+                    value=value[0],
+                    disabled=disabled
+                )
+            elif value[2] == "strlist" and value[1] is None:
+                child = MultiTextBox(
+                    description=name,
+                    value=value[0],
+                    options=value[1],
+                    disabled=disabled
+                ).widget()
+            elif value[2] == "strlist":
+                child = MultiComboBox(
+                    description=name,
+                    value=value[0],
+                    options=value[1],
+                    disabled=disabled
+                ).widget()
+            elif value[2] == "radio":
+                child = widgets.RadioButtons(
+                    description=name,
+                    value=value[0],
+                    options=value[1],
+                    disabled=disabled
+                )
+            else:
+                print("Unsupported metadata field type " + str(value[2]))
+                child = widgets.HBox()
+                child.value = ""
+            if value[3] == "hidden":
+                child.layout.display = 'none'
+            child.old_entry = [name, value]
+            childs.append(child)
+        metabox.children = tuple(childs)
+
+    def _extract_metadata_dict_from_widget(self):
+        metadata_dict = {}
+        for widget in self.metadata_box.children[1:]:
+            metadata_dict[widget.old_entry[0]] = widget.old_entry[1]
+            metadata_dict[widget.old_entry[0]][1] = widget.value
+        return metadata_dict
+
+    def _flatten_metadata_dict(self, metadata_dict):
+        text_separator = " _and_ "
+        flat_metadata = {}
+        for key, value in metadata_dict.items():
+            flat_metadata[key] = text_separator.join([str(elem) for elem in value[1]])
+        return flat_metadata
+
     def upload_data(self):
-        self.filesystem_switch = "local"
+        metadata = self._extract_metadata_dict_from_widget()
+        metadata = self._flatten_metadata_dict(metadata)
+        for data in self.filebrowser.get_data():
+            self.filebrowser.put_data(data, metadata)
 
     def _upload_button_clicked(self, b):
-        if self.filesystem_switch == 'S3':
+        b.click_counter += 1
+        b.disabled = True
+        #b.description = "Upload New Data" + " (" + str(b.click_counter) + ")"
+        if self.displayed_filesystem == 'local':
             self.upload_data()
+            self.displayed_filesystem = "S3"
         else:
-            self.filesystem_switch = "S3"
-        self.filebrowser.configure(storage_system=self.filesystem_switch)
+            self.displayed_filesystem = "local"
+        self.filebrowser.configure(storage_system=self.displayed_filesystem)
+        self._update_optionbox(self.optionbox)
+        b.disabled = False
 
     def _update_optionbox(self, optionbox):
-        if self.filesystem_switch == "local":
-            self.upload_button.tooltip = "Choose Data from local filesystem to upload"
-        else:
+        if self.displayed_filesystem == "local":
             self.upload_button.tooltip = "Upload Data from local filesystem"
+            self._update_metadatabox(self.metadata_box, metadata_dict=TBR_Metadata_Dict)
+        else:
+            self.upload_button.tooltip = "Choose Data from local filesystem to upload"
+            self._update_metadatabox(self.metadata_box)
         optionbox.children = tuple([self.upload_button])
 
     def _update_body(self, bodybox):
@@ -263,7 +360,7 @@ class GUI_AddProject():
                 ))
             Label2 = widgets.Label(
                 value="'" + self.pr.base_name + "'",
-                layout = Label.layout
+                layout=Label.layout
                 #widgets.Layout(
                 #    width="30%",
                 #    display="flex",
