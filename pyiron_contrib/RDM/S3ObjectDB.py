@@ -26,7 +26,7 @@ class S3ObjectDB(object):
             config = config_json
         else:
             if config_file is None:
-                print('WARN: No config given, trying config.json')
+                #print('WARN: No config given, trying config.json')
                 config_file = './config.json'
             with open(config_file) as json_file:
                 config = json.load(json_file)
@@ -200,6 +200,21 @@ class S3ObjectDB(object):
             return self.bucket.Object(file).get()
         else:
             return self.bucket.Object(self.group + file).get()
+
+    def put(self, data_obj, metadata=None):
+        """
+            Upload a data_obj to the current group/ the provided path
+            Args:
+                 data_obj: MeasuredData Object
+                metadata: metadata to be used (has to be a dictionary of type {"string": "string, })
+                      provided metadata overwrites the one possibly present in the data object
+        """
+        path = self.group + data_obj.filename
+        if metadata is None:
+            metadata = data_obj.metadata
+        self.bucket.put_object(Key=path, Body=data_obj.data(), Metadata=metadata)
+
+
 
     def _list_objects(self):
         l = []
