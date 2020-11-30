@@ -334,6 +334,16 @@ class FileBrowser(object):
         self._update_filebox(self.filebox)
         return self.data
 
+    def put_data(self, data, metadata=None):
+        """
+        Uploads a single data object to the current directory of the RDM System
+        Args:
+            data: MeasuredData Object like the ones stored in self.data
+            metadata: metadata to be used (has to be a dictionary of type {"string": "string, })
+                      provided metadata overwrites the one possibly present in the data object
+        """
+        self._data_access.put(data, metadata)
+
     def _download_data_from_s3(self):
         for file in self._clickedFiles:
             filename = os.path.split(file)[1]
@@ -346,6 +356,15 @@ class FileBrowser(object):
             data = MeasuredData(data=obj['Body'].read(), filename=filename, filetype=filetype,
                                 metadata=obj["Metadata"])
             self.data.append(data)
+
+    def upload_data_to_s3(self, files, metadata=None):
+        """
+        Uploads files into the currently opened directory of the Research Data System
+        Arguments:
+            files `list` : List of filenames to upload
+            metadata `dictionary`: metadata of the files (Not nested, only "str" type)
+        """
+        self._data_access.upload(files=files, metadata=metadata)
 
     def _select_files(self):
         if len(self.path_string_box.value) == 0:
