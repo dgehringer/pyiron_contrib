@@ -7,10 +7,12 @@ class MultiComboBox:
         self.add_unknown = kwargs.pop("add_unknown", False)
         self.value = kwargs.pop('value', [])
         self.options = kwargs.pop("options", None)
+        self.disabled = kwargs.pop("disabled", False)
         self.placeholder = kwargs.pop("placeholder", "")
         self.style = kwargs.pop("style", {})
-        self.description_width = self.style.pop("description_width", "")
-        self._outerbox = widgets.HBox(**kwargs)
+        width = kwargs.pop("width", "212px")
+        self.description_width = self.style.pop("description_width", "76px")
+        self._outerbox = widgets.HBox(width=width, **kwargs)
         self._kwargs = kwargs
 
     def widget(self):
@@ -34,7 +36,8 @@ class MultiComboBox:
             description="",
             options=self.options,
             value="",
-            placeholder=self.placeholder
+            placeholder=self.placeholder,
+            disabled=self.disabled
         )
         Combobox.continuous_update = False
         Combobox.observe(self._on_value_change, names="value")
@@ -42,7 +45,8 @@ class MultiComboBox:
         for val in self.value:
             button = widgets.Button(
                 description=val,
-                tooltip="delete"
+                tooltip="delete",
+                disabled=self.disabled
             )
             button.on_click(self._on_click)
             childs.append(button)
@@ -51,11 +55,14 @@ class MultiComboBox:
             layout=widgets.Layout(
                 display="flex",
                 justify_content="flex-end",
-                width=self.description_width + '      ')
+                width=self.description_width,
+                margin="6px")
         )
         innerbox.children = tuple(childs)
 
         outerbox.children = tuple([Label, innerbox])
+        outerbox.value = self.value
+        outerbox.description = self.description
 
 
 class MultiTextBox:
@@ -64,9 +71,11 @@ class MultiTextBox:
         self.value = kwargs.pop('value', [])
         self.options = kwargs.pop("options", None)
         self.placeholder = kwargs.pop("placeholder", "")
+        self.disabled = kwargs.pop("disabled", False)
         self.style = kwargs.pop("style", {})
-        self.description_width = self.style.pop("description_width", "")
-        self._outerbox = widgets.HBox(**kwargs)
+        width = kwargs.pop("width", "212px")
+        self.description_width = self.style.pop("description_width", "76px")
+        self._outerbox = widgets.HBox(width=width, **kwargs)
         self._kwargs = kwargs
 
     def widget(self):
@@ -89,6 +98,7 @@ class MultiTextBox:
             description="",
             value="",
             placeholder=self.placeholder,
+            disabled=self.disabled,
         )
         Textbox.continuous_update = False
         Textbox.observe(self._on_value_change, names="value")
@@ -96,7 +106,8 @@ class MultiTextBox:
         for val in self.value:
             button = widgets.Button(
                 description=val,
-                tooltip="delete"
+                tooltip="delete",
+                disabled=self.disabled
             )
             button.on_click(self._on_click)
             childs.append(button)
@@ -105,8 +116,11 @@ class MultiTextBox:
             layout=widgets.Layout(
                 display="flex",
                 justify_content="flex-end",
-                width=self.description_width + '  ')
+                width=self.description_width,
+                margin="6px")
         )
         innerbox.children = tuple(childs)
 
         outerbox.children = tuple([Label, innerbox])
+        outerbox.value = self.value
+        outerbox.description = self.description
