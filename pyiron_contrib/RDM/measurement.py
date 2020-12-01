@@ -40,7 +40,10 @@ class MeasuredData:
             self.filetype = filetype
         if storedata and data is None:
             self._data = self._read_source()
-        self.metadata = metadata
+        if metadata is None:
+            self.metadata = {}
+        else:
+            self.metadata = metadata
 
     def _read_source(self):
         with open(self.source, "rb") as f:
@@ -51,7 +54,7 @@ class MeasuredData:
         if self.hasdata:
             return self._data
         else:
-            self._read_source()
+            return self._read_source()
 
     def data_as_np_array(self):
         """
