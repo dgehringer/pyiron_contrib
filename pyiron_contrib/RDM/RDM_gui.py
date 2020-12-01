@@ -8,10 +8,13 @@ from pyiron_contrib.RDM.gui_data import FileBrowser
 from pyiron_base import InputList
 
 #TODO: Get rid of the hard-coded dictionary!
+# Careful - ":" in a key also associated with an header in the S3 put method,
+# thus NOT usable as character in any metadata key!
+# Introduce metadata class with flatten method taking this into account
 TBR_Metadata_Dict = {
     "Filename": ["", None, "str", "hidden"],
     "Owner": ["Me", None, "str", "normal"],
-    "Project:": ["SFB", None, "str", "fixed"],
+    "Project": ["SFB", None, "str", "fixed"],
     "PI": [["Someone"], None, "strlist", "normal"],
     "Field": [["Theochem", "Physics"], ["Theochem", "Physics", "Arts", "Whatever"], "strlist", "fixed"],
     "Bench": ["Some_Table", ["Some_Table", "Another Table"], "radio", "normal"],
@@ -225,8 +228,8 @@ class GUI_Resource():
             elif value[2] == "radio":
                 child = widgets.RadioButtons(
                     description=name,
-                    value=value[0],
                     options=value[1],
+                    value=value[0],
                     disabled=disabled
                 )
             else:
@@ -243,14 +246,19 @@ class GUI_Resource():
         metadata_dict = {}
         for widget in self.metadata_box.children[1:]:
             metadata_dict[widget.old_entry[0]] = widget.old_entry[1]
-            metadata_dict[widget.old_entry[0]][1] = widget.value
+            metadata_dict[widget.old_entry[0]][0] = widget.value
         return metadata_dict
 
     def _flatten_metadata_dict(self, metadata_dict):
         text_separator = " _and_ "
         flat_metadata = {}
         for key, value in metadata_dict.items():
-            flat_metadata[key] = text_separator.join([str(elem) for elem in value[1]])
+            if isinstance(value[0], list):
+                flat_metadata[key] = text_separator.join([str(elem) for elem in value[0]])
+            elif value[0] is None:
+                flat_metadata[key] = 'none'
+            else:
+                flat_metadata[key] = str(value[0])
         return flat_metadata
 
     def upload_data(self):
