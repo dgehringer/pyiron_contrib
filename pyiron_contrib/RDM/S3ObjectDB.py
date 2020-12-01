@@ -210,9 +210,16 @@ class S3ObjectDB(object):
                       provided metadata overwrites the one possibly present in the data object
         """
         path = self.group + data_obj.filename
+        data = data_obj.data()
         if metadata is None:
             metadata = data_obj.metadata
-        self.bucket.put_object(Key=path, Body=data_obj.data(), Metadata=metadata)
+        if metadata is None:
+            raise ValueError
+        if not isinstance(path, str):
+            raise ValueError
+        if data is None:
+            raise ValueError
+        self.bucket.put_object(Key=path, Body=data, Metadata=metadata)
 
 
 
