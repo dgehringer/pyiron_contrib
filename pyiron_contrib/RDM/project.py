@@ -1,4 +1,5 @@
 from pyiron_base import Project as ProjectCore, InputList
+from pyiron_contrib.RDM.gui_data import FileBrowser
 
 class Project(ProjectCore):
     """
@@ -15,6 +16,9 @@ class Project(ProjectCore):
         self.hdf5 = self.create_hdf(self.path, self.base_name + "_projectdata")
         self.load_metadata()
         self._load_projectinfo()
+
+    def file_browser(self):
+        return FileBrowser(project=self).gui()
 
     @property
     def metadata(self):

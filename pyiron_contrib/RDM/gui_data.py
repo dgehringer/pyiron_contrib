@@ -82,7 +82,8 @@ class DisplayMetadata:
                 print(key + ': ' + value)
 
 
-class FileBrowser(object):
+
+class _FileBrowser(object):
     """
         File Browser Widget with S3 support
 
@@ -96,6 +97,7 @@ class FileBrowser(object):
     def __init__(self,
                  Vbox=None,
                  s3path="",
+                 localpath=None,
                  fix_s3_path=False,
                  storage_system="local",
                  fix_storage_sys=False,
@@ -105,6 +107,7 @@ class FileBrowser(object):
             Filebrowser to browse the local or a remote (S3-based) file system.
             Args:
               s3path (str): Starting path within the remote file system.
+              localpath (str/None): Starting path in the local filesystem; if None use current directory.
               fix_s3_path (bool): If True the path in the remote file system cannot be changed.
               storage_system (str): The filesystem to access (fist) either "local" or "S3".
               fix_storage_sys (bool): If True the file system cannot be changed.
@@ -118,7 +121,7 @@ class FileBrowser(object):
         self.s3path = s3path
         self.data_sys = storage_system
         if self.data_sys == "local":
-            self.path = os.getcwd()
+            self.path = localpath or os.getcwd()
         else:
             self.path = self.s3path
         self.output = widgets.Output(layout=widgets.Layout(width='50%', height='100%'))
@@ -511,3 +514,31 @@ class GUI_Data:
         #           disabled=False
         #       )
         return self.filebrws
+
+
+class FileBrowser(_FileBrowser):
+    """
+        File Browser Widget with S3 support
+
+        Allows to browse files in the local or a remote S3 based file system.
+        Selected files may be received from this FileBrowser widget by its get_data method.
+    """
+    def __init__(self,
+                 project=None,
+                 Vbox = None,
+                 s3path="",
+                 fix_s3_path = False,
+                 storage_system = "local",
+                 fix_storage_sys = False,
+                 S3_config_file = None
+                 ):
+
+        path = project.path[:-1] if project is not None else None
+        super().__init__(Vbox=Vbox,
+                         s3path=s3path,
+                         localpath=path,
+                         fix_s3_path=fix_s3_path,
+                         storage_system=storage_system,
+                         fix_storage_sys=fix_storage_sys,
+                         S3_config_file=S3_config_file)
+
