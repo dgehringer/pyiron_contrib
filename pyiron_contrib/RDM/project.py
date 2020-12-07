@@ -17,8 +17,15 @@ class Project(ProjectCore):
         self.load_metadata()
         self._load_projectinfo()
 
-    def file_browser(self):
-        return FileBrowser(project=self).gui()
+    @property
+    def open_file_browser(self, Vbox=None):
+        """
+        Provides a file browser to inspect the local data system.
+        Args:
+             Vbox (ipywidgets.Vbox / None): Vbox in which the file browser is displayed.
+                                            If None, a new Vbox is provided.
+        """
+        return FileBrowser(project=self, Vbox=Vbox, fix_storage_sys=True, hdf_as_dirs=True).gui
 
     @property
     def metadata(self):
