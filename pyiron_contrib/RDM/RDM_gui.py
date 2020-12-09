@@ -264,7 +264,7 @@ class GUI_Resource():
     def upload_data(self):
         metadata = self._extract_metadata_dict_from_widget()
         metadata = self._flatten_metadata_dict(metadata)
-        for data in self.filebrowser.get_data():
+        for data in self.filebrowser.data:
             self.filebrowser.put_data(data, metadata)
 
     def _upload_button_clicked(self, b):

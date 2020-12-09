@@ -5,18 +5,18 @@ import ipywidgets as widgets
 from IPython import display as IPyDisplay
 from IPython.core.display import display
 from matplotlib import pylab as plt
+from skimage import io
 import pandas
 
 from pyiron_base.generic.hdfio import FileHDFio
 
 from pyiron_contrib.RDM.S3ObjectDB import S3ObjectDB
-from pyiron_contrib.image.image import Image
 from pyiron_contrib.RDM.measurement import MeasuredData
 
 
 class DisplayFile:
     """
-        Class to display a file localted at path in the given outwidget
+        Class to display a file located at path in the given outwidget
     """
     # TODO:
     '''
@@ -26,48 +26,72 @@ class DisplayFile:
   fig, ax = plt.subplots(**subplots_kwargs)
     '''
 
-    def __init__(self, path, outwidget):
-        self.path = path
+    def __init__(self, file, outwidget):
+        """
+            Class to display different files in a notebook
+            Args:
+                file (str/None): path to the file to be displayed.
+                outwidget (`ipywidgets.Output` widget): Will be used to display the file.
+        """
         self.output = outwidget
-        _, filetype = os.path.splitext(path)
+        self.fig = None
+        self.ax = None
+        if file is not None:
+            self.display_file(file)
+
+
+    def display_file(self, file, outwidget=None):
+        """
+            Display the file in the outwidget
+        """
+        if outwidget is not None:
+            self.output = outwidget
+        self.file = file
+        _, filetype = os.path.splitext(file)
         if filetype.lower() in ['.tif', '.tiff']:
-            self.display_tiff()
+            self._display_tiff()
         elif filetype.lower() in ['.jpg', '.jpeg', '.png', '.gif']:
-            self.display_img()
+            self._display_img()
         elif filetype.lower() in ['.txt']:
-            self.display_txt()
+            self._display_txt()
         elif filetype.lower() in ['.csv']:
-            self.display_csv()
+            self._display_csv()
         else:
-            self.diplay_default()
+            self._diplay_default()
 
-    def display_tiff(self):
+    def _display_tiff(self):
         plt.ioff()
-        img = Image(self.path)
-        fig, ax = img.plot()
+        data = io.imread(self.file)
+        if self.fig is None:
+            self.fig, self.ax = plt.subplots()
+        else:
+            self.ax.clear()
+        self.ax.imshow(data)
+        self.ax.get_xaxis().set_visible(False)
+        self.ax.get_yaxis().set_visible(False)
         with self.output:
-            display(fig)
+            display(self.fig)
 
-    def display_txt(self):
+    def _display_txt(self):
         with self.output:
-            with open(self.path) as f:
+            with open(self.file) as f:
                 print(f.read(), end='')
 
-    def display_csv(self):
+    def _display_csv(self):
         with self.output:
-            display(pandas.read_csv(self.path))
+            display(pandas.read_csv(self.file))
 
-    def display_img(self):
+    def _display_img(self):
         with self.output:
-            display(IPyDisplay.Image(self.path))
+            display(IPyDisplay.Image(self.file))
 
-    def diplay_default(self):
+    def _diplay_default(self):
         try:
             with self.output:
-                display(self.path)
+                display(self.file)
         except:
             with self.output:
-                print(self.path)
+                print(self.file)
 
 
 class DisplayMetadata:
@@ -92,10 +116,6 @@ class _FileBrowser(object):
         Allows to browse files in the local or a remote S3 based file system.
         Selected files may be received from this FileBrowser widget by its get_data method.
     """
-
-    # ToDo:
-    #           Need upload method - upon choose files > upload them, ask for meta-data  >> Convert to own class <<
-    #                                                                                   Needed for File upload to S3
     def __init__(self,
                  Vbox=None,
                  s3path="",
@@ -135,12 +155,13 @@ class _FileBrowser(object):
         else:
             self.path = self.s3path
         self.output = widgets.Output(layout=widgets.Layout(width='50%', height='100%'))
+        self._display_file = DisplayFile(file=None, outwidget=self.output).display_file
         self._clickedFiles = []
-        self.data = []
+        self._data = []
         self.fix_storage_sys = fix_storage_sys
         self._data_access = S3ObjectDB(config_file=S3_config_file,
                                        group=self.s3path)
-        self.path_storage = [localpath, self.s3path]
+        self._path_storage = [localpath, self.s3path]
         self._update_files()
         self.pathbox = widgets.HBox(layout=widgets.Layout(width='100%', justify_content='flex-start'))
         self.optionbox = widgets.HBox()
@@ -172,11 +193,11 @@ class _FileBrowser(object):
             self.fix_s3_path = fix_s3_path
         if storage_system is not None:
             if storage_system == "S3" and self.data_sys == "local":
-                self.path_storage[0] = self.path
-                self.path = self.path_storage[1]
+                self._path_storage[0] = self.path
+                self.path = self._path_storage[1]
             elif storage_system == "local" and self.data_sys == "S3":
-                self.path_storage[1] = self.path
-                self.path = self.path_storage[0]
+                self._path_storage[1] = self.path
+                self.path = self._path_storage[0]
             self.data_sys = storage_system
         if fix_storage_sys is not None:
             self.fix_storage_sys = fix_storage_sys
@@ -185,7 +206,7 @@ class _FileBrowser(object):
             if self.data_sys == "S3":
                 self.path = self.s3path
             else:
-                self.path_storage[1] = self.s3path
+                self._path_storage[1] = self.s3path
         self._update_files()
         self.update()
 
@@ -239,8 +260,8 @@ class _FileBrowser(object):
                 if self.data_sys == 'S3':
                     return
                 self._clickedFiles = []
-                self.path_storage[0] = self.path
-                self.path = self.path_storage[1]
+                self._path_storage[0] = self.path
+                self.path = self._path_storage[1]
                 b.style = checkbox_active_style
                 file_sys_button_local.style = checkbox_inactive_style
                 if self.fix_s3_path:
@@ -253,8 +274,8 @@ class _FileBrowser(object):
                 if self.data_sys == 'local':
                     return
                 self._clickedFiles = []
-                self.path_storage[1] = self.path
-                self.path = self.path_storage[0]
+                self._path_storage[1] = self.path
+                self.path = self._path_storage[0]
                 b.style = checkbox_active_style
                 set_path_button.disabled = False
                 file_sys_button_S3.style = checkbox_inactive_style
@@ -346,23 +367,24 @@ class _FileBrowser(object):
             self._clickedFiles = []
             self._update_filebox(self.filebox)
 
-    def get_data(self):
+    @property
+    def data(self):
         if self.data_sys == "S3":
             self._download_data_from_s3()
         else:
             for file in self._clickedFiles:
                 data = MeasuredData(source=file)
-                self.data.append(data)
+                self._data.append(data)
         with self.output:
-            if len(self.data) > 0:
-                print('Loaded %i File(s):' % (len(self.data)))
-                for i in self.data:
+            if len(self._data) > 0:
+                print('Loaded %i File(s):' % (len(self._data)))
+                for i in self._data:
                     print(i.filename)
             else:
                 print('No files chosen')
         self._clickedFiles = []
         self._update_filebox(self.filebox)
-        return self.data
+        return self._data
 
     def put_data(self, data, metadata=None):
         """
@@ -385,7 +407,7 @@ class _FileBrowser(object):
             obj = self._data_access.get(file, abspath=True)
             data = MeasuredData(data=obj['Body'].read(), filename=filename, filetype=filetype,
                                 metadata=obj["Metadata"])
-            self.data.append(data)
+            self._data.append(data)
 
     def upload_data_to_s3(self, files, metadata=None):
         """
@@ -511,7 +533,7 @@ class _FileBrowser(object):
             f = os.path.join(self.path, b.description)
             self.output.clear_output(True)
             if self.data_sys == 'local' and not self._in_hdf:
-                DisplayFile(f, self.output)
+                self._display_file(f)
             elif self._in_hdf:
                 with self.output:
                     print(self._h5_access[b.description])
@@ -578,7 +600,7 @@ class GUI_Data:
         pass
 
     def _get_data(self):
-        self.data = self.filewidget.get_data()
+        self.data = self.filewidget.data
 
     def list_data(self):
         self._get_data()
