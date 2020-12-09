@@ -20,6 +20,9 @@ JOB_CLASS_DICT['ProtocolFTSEvolution'] = 'pyiron_contrib.protocol.compound.finit
 JOB_CLASS_DICT['ProtocolFTSEvolutionParallel'] = 'pyiron_contrib.protocol.compound.finite_temperature_string'
 JOB_CLASS_DICT['ImageJob'] = 'pyiron_contrib.image.job'
 JOB_CLASS_DICT['RandSpg'] = 'pyiron_contrib.atomistic.atomistics.structures.randspg'
+JOB_CLASS_DICT['SpeciesSwapper'] = 'pyiron_contrib.atomistic.atomistics.master.swapper'
+JOB_CLASS_DICT['PSpeciesSwapper'] = 'pyiron_contrib.atomistic.atomistics.master.swapper'
+JOB_CLASS_DICT['ChemPotEstimator'] = 'pyiron_contrib.atomistic.atomistics.master.swapper'
 
 from ._version import get_versions
 
