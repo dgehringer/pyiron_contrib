@@ -11,7 +11,7 @@ import pandas
 from pyiron_base.generic.hdfio import FileHDFio
 
 from pyiron_contrib.RDM.S3ObjectDB import S3ObjectDB
-from pyiron_contrib.RDM.measurement import MeasuredData
+from pyiron_contrib.RDM.data import Data
 
 
 class DisplayFile:
@@ -371,7 +371,7 @@ class _FileBrowser:
             self._download_data_from_s3()
         else:
             for file in self._clickedFiles:
-                data = MeasuredData(source=file)
+                data = Data(source=file)
                 self._data.append(data)
         with self.output:
             if len(self._data) > 0:
@@ -403,8 +403,8 @@ class _FileBrowser:
             else:
                 filetype = filetype[1:]
             obj = self._data_access.get(file, abspath=True)
-            data = MeasuredData(data=obj['Body'].read(), filename=filename, filetype=filetype,
-                                metadata=obj["Metadata"])
+            data = Data(data=obj['Body'].read(), filename=filename, filetype=filetype,
+                        metadata=obj["Metadata"])
             self._data.append(data)
 
     def upload_data_to_s3(self, files, metadata=None):
