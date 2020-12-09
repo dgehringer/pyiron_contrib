@@ -349,4 +349,7 @@ class ChemPotEstimator(FlexibleMaster):
     def from_hdf(self, hdf=None, group_name=None):
         super().from_hdf(hdf, group_name)
         self.output.from_hdf(hdf=self.project_hdf5)
-        self.collect_output()
+        try:
+            self.collect_output()
+        except TypeError:  # `NoneType` object is not subscriptable in collect output if the job is loaded before run
+            pass
