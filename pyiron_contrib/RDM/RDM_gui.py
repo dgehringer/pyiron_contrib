@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pyiron_contrib.RDM.internal_widgets import MultiComboBox, MultiTextBox
 from pyiron_contrib.RDM.project import Project
-from pyiron_contrib.RDM.gui_data import FileBrowser
+from pyiron_contrib.RDM.file_browser import FileBrowser
 from pyiron_base import InputList
 
 #TODO: Get rid of the hard-coded dictionary!

@@ -1,5 +1,6 @@
-from pyiron_base import Project as ProjectCore, InputList
-from pyiron_contrib.RDM.gui_data import FileBrowser
+from pyiron_base import InputList
+from pyiron import Project as ProjectCore
+from pyiron_contrib.RDM.file_browser import FileBrowser
 
 class Project(ProjectCore):
     """
@@ -17,7 +18,6 @@ class Project(ProjectCore):
         self.load_metadata()
         self._load_projectinfo()
 
-    @property
     def open_file_browser(self, Vbox=None):
         """
         Provides a file browser to inspect the local data system.
@@ -25,7 +25,7 @@ class Project(ProjectCore):
              Vbox (ipywidgets.Vbox / None): Vbox in which the file browser is displayed.
                                             If None, a new Vbox is provided.
         """
-        return FileBrowser(project=self, Vbox=Vbox, fix_storage_sys=True, hdf_as_dirs=True).gui
+        return FileBrowser(project=self, Vbox=Vbox, fix_storage_sys=True, hdf_as_dirs=True).gui()
 
     @property
     def metadata(self):
