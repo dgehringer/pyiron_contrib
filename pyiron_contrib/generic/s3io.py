@@ -4,7 +4,7 @@ import os
 import fnmatch
 import json
 
-class S3ObjectDB(object):
+class FileS3IO(object):
     def __init__(self, config_file=None, config_json=None, group=''):
         """
             Establishes connection to a specific 'bucket' of a S3 type object store.
@@ -26,8 +26,7 @@ class S3ObjectDB(object):
             config = config_json
         else:
             if config_file is None:
-                #print('WARN: No config given, trying config.json')
-                config_file = './config.json'
+                raise TypeError ("config_json or config_file have to be provided (both None)")
             with open(config_file) as json_file:
                 config = json.load(json_file)
 

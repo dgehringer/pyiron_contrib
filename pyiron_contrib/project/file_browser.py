@@ -10,8 +10,8 @@ import pandas
 
 from pyiron_base.generic.hdfio import FileHDFio
 
-from pyiron_contrib.RDM.S3ObjectDB import S3ObjectDB
-from pyiron_contrib.RDM.data import Data
+from pyiron_contrib.generic.s3io import FileS3IO
+from pyiron_contrib.generic.data import Data
 
 
 class DisplayFile:
@@ -153,15 +153,19 @@ class _FileBrowser:
         self._clickedFiles = []
         self._data = []
         self.fix_storage_sys = fix_storage_sys
-        self._data_access = S3ObjectDB(config_file=S3_config_file,
-                                       group=self.s3path)
         self._path_storage = [localpath, self.s3path]
-        self._update_files()
         self.pathbox = widgets.HBox(layout=widgets.Layout(width='100%', justify_content='flex-start'))
         self.optionbox = widgets.HBox()
         self.filebox = widgets.VBox(layout=widgets.Layout(width='50%', height='100%', justify_content='flex-start'))
         self.path_string_box = widgets.Text(description="(rel) Path", width='min-content')
-        self.update()
+        try:
+            self._s3_access = FileS3IO(config_file=S3_config_file,
+                                       group=self.s3path)
+            self._update_files()
+            self.update()
+        except TypeError:
+            self._s3_access = None
+            self.configure(storage_system="local", fix_storage_sys=True)
 
     def configure(self,
                  s3path=None,
@@ -229,10 +233,12 @@ class _FileBrowser:
             self.files = list_all_dir["nodes"]
             self.h5dirs = list_all_dir["groups"]
         else:
-            self._data_access.open(self.path)
-            self.files = self._data_access.list_nodes()
+            if self._s3_access is None:
+                raise AttributeError("S3 Access is not set up!")
+            self._s3_access.open(self.path)
+            self.files = self._s3_access.list_nodes()
             if not self.fix_s3_path:
-                self.dirs = self._data_access.list_groups()
+                self.dirs = self._s3_access.list_groups()
 
     def gui(self):
         self.update()
@@ -346,7 +352,7 @@ class _FileBrowser:
             # check path consistency:
             if (self.data_sys == 'local' and os.path.exists(path)):
                 self.path = os.path.abspath(path)
-            elif (self._data_access.is_dir(path[1:]) and self.data_sys == 'S3'):
+            elif (self._s3_access.is_dir(path[1:]) and self.data_sys == 'S3'):
                 self.path = path[1:]
             else:
                 self.path_string_box.__init__(description="(rel) Path", value='')
@@ -392,7 +398,9 @@ class _FileBrowser:
             metadata: metadata to be used (has to be a dictionary of type {"string": "string, })
                       provided metadata overwrites the one possibly present in the data object
         """
-        self._data_access.put(data, metadata)
+        if self._s3_access is None:
+            raise AttributeError ("S3 Access is not set up!")
+        self._s3_access.put(data, metadata)
 
     def _download_data_from_s3(self):
         for file in self._clickedFiles:
@@ -402,7 +410,7 @@ class _FileBrowser:
                 filetype = None
             else:
                 filetype = filetype[1:]
-            obj = self._data_access.get(file, abspath=True)
+            obj = self._s3_access.get(file, abspath=True)
             data = Data(data=obj['Body'].read(), filename=filename, filetype=filetype,
                         metadata=obj["Metadata"])
             self._data.append(data)
@@ -414,7 +422,9 @@ class _FileBrowser:
             files `list` : List of filenames to upload
             metadata `dictionary`: metadata of the files (Not nested, only "str" type)
         """
-        self._data_access.upload(files=files, metadata=metadata)
+        if self._s3_access is None:
+            raise AttributeError ("S3 Access is not set up!")
+        self._s3_access.upload(files=files, metadata=metadata)
 
     def _select_files(self):
         if len(self.path_string_box.value) == 0:
@@ -435,7 +445,7 @@ class _FileBrowser:
         elif self._in_hdf:
             pass
         else:
-            appendlist = self._data_access.glob(path)
+            appendlist = self._s3_access.glob(path)
         self._clickedFiles.extend(appendlist)
         self._update_filebox(self.filebox)
         with self.output:
@@ -538,7 +548,7 @@ class _FileBrowser:
                 with self.output:
                     print(self._h5_access[b.description])
             else:
-                metadata = self._data_access.get_metadata(f, abspath=True)
+                metadata = self._s3_access.get_metadata(f, abspath=True)
                 DisplayMetadata(metadata, self.output)
             if f in self._clickedFiles:
                 b.style.button_color = file_color

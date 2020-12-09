@@ -1,4 +1,4 @@
-from pyiron_contrib.RDM.file_browser import FileBrowser
+from pyiron_contrib.project.file_browser import FileBrowser
 
 
 class GUI_Data:

@@ -1,6 +1,6 @@
 from pyiron_base import InputList
 from pyiron import Project as ProjectCore
-from pyiron_contrib.RDM.file_browser import FileBrowser
+from pyiron_contrib.project.file_browser import FileBrowser
 
 class Project(ProjectCore):
     """
