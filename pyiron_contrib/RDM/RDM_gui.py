@@ -167,16 +167,11 @@ class GUI_Resource():
         self.metadata_box = widgets.VBox(layout=widgets.Layout(width="33%"))
         self.filebrowser = FileBrowser(Vbox=self.filebrowser_box,
                                        s3path=self.path,
+                                       S3_config_file='config.json',  # TODO: replace with actual setup
                                        fix_s3_path=True,
                                        fix_storage_sys=True,
                                        storage_system='S3')
         self.optionbox = widgets.HBox()
-        self.upload_button = widgets.Button(
-            description="Upload New Data",
-            tooltip="Choose Data from local filesystem to upload"
-        )
-        self.upload_button.click_counter = 0
-        self.upload_button.on_click(self._upload_button_clicked)
 
     def gui(self):
         self._update_body(self.bodybox)
@@ -268,11 +263,11 @@ class GUI_Resource():
             self.filebrowser.put_data(data, metadata)
 
     def _upload_button_clicked(self, b):
-        b.click_counter += 1
         b.disabled = True
-        #b.description = "Upload New Data" + " (" + str(b.click_counter) + ")"
+        # b.description = "Upload New Data" + " (" + str(b.click_counter) + ")"
         if self.displayed_filesystem == 'local':
-            self.upload_data()
+            if b.description == "Upload New Data":
+                self.upload_data()
             self.displayed_filesystem = "S3"
         else:
             self.displayed_filesystem = "local"
@@ -280,14 +275,28 @@ class GUI_Resource():
         self._update_optionbox(self.optionbox)
         b.disabled = False
 
+    def _cancel_button_clicked(self, b):
+        if b.description == "Cancel":
+            self.displayed_filesystem = "S3"
+            self.filebrowser.configure(storage_system=self.displayed_filesystem)
+            self._update_optionbox(self.optionbox)
+        elif self.origin is not None:
+            self.origin.update(bodybox=self.bodybox)
+
     def _update_optionbox(self, optionbox):
+        upload_button = widgets.Button(description="Upload New Data")
+        upload_button.on_click(self._upload_button_clicked)
+
         if self.displayed_filesystem == "local":
-            self.upload_button.tooltip = "Upload Data from local filesystem"
+            upload_button.tooltip = "Upload Data from local filesystem"
             self._update_metadatabox(self.metadata_box, metadata_dict=TBR_Metadata_Dict)
+            cancel_button = widgets.Button(description="Cancel")
         else:
-            self.upload_button.tooltip = "Choose Data from local filesystem to upload"
+            upload_button.tooltip = "Choose Data from local filesystem to upload"
             self._update_metadatabox(self.metadata_box)
-        optionbox.children = tuple([self.upload_button])
+            cancel_button = widgets.Button(description="Close Resource")
+        cancel_button.on_click(self._cancel_button_clicked)
+        optionbox.children = tuple([upload_button, cancel_button])
 
     def _update_body(self, bodybox):
         childs = [widgets.HBox([self.filebrowser.gui(), self.metadata_box])]
