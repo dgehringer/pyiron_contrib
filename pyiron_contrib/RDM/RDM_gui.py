@@ -167,7 +167,7 @@ class GUI_Resource():
         self.metadata_box = widgets.VBox(layout=widgets.Layout(width="33%"))
         self.filebrowser = FileBrowser(Vbox=self.filebrowser_box,
                                        s3path=self.path,
-                                       S3_config_file='config.json',  # TODO: replace with actual setup
+                                       s3_config='config.json',  # TODO: replace with actual setup
                                        fix_s3_path=True,
                                        fix_storage_sys=True,
                                        storage_system='S3')
