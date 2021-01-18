@@ -151,6 +151,13 @@ class GUI_RDM:
         add = GUI_AddProject(project=self.pr, VBox=self.bodybox, origin=self)
         add.gui()
 
+    def _ipython_display_(self):
+        try:
+            from IPython.display import display
+            display(self.gui())
+        except ImportError:
+            print(repr(self))
+
 class GUI_Resource():
     def __init__(self, resource_path, project=None, VBox=None, origin=None):
         self.path = resource_path
