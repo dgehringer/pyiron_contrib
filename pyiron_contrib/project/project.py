@@ -31,6 +31,10 @@ class Project(ProjectCore):
             self._filebrowser = FileBrowser(project=self, Vbox=Vbox, fix_storage_sys=True, hdf_as_dirs=True)
         return self._filebrowser.gui()
 
+    def open_RDM_GUI(self):
+        from pyiron_contrib.RDM.RDM_gui import GUI_RDM
+        return GUI_RDM(project=self).gui()
+
     @property
     def metadata(self):
         return self._metadata
