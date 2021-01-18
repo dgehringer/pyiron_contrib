@@ -329,7 +329,7 @@ class GUI_AddProject():
                 for child in childs:
                     if hasattr(child, 'value') and (child.description != ""):
                         try:
-                            if metadata[child.description][1] == 'date':
+                            if metadata[child.description][1] == 'date' and child.value is not None:
                                 value = datetime.toordinal(child.value)
                             else:
                                 value = child.value
