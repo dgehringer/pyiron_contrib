@@ -1,4 +1,26 @@
 import ipywidgets as widgets
+from IPython.display import display
+
+class GenericGuiBox:
+    def __init__(self, box):
+        self.box = box
+
+    def gui(self):
+        return self.box
+
+    def _ipython_display_(self):
+        display(self.gui())
+
+
+class GenericGuiVbox(GenericGuiBox):
+    """ Base Class for GUI elements """
+    def __init__(self, Vbox=None):
+        super().__init__(Vbox)
+        if Vbox is None:
+            self.box = widgets.VBox()
+        else:
+            self.box = Vbox
+
 
 
 class MultiComboBox:
