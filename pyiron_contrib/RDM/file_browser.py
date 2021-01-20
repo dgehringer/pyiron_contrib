@@ -11,7 +11,7 @@ import pandas
 from pyiron_base.generic.hdfio import FileHDFio
 
 from pyiron_contrib.generic.s3io import FileS3IO
-from pyiron_contrib.generic.data import Data
+from pyiron_contrib.generic.filedata import FileData as Data
 
 
 class DisplayFile:
