@@ -6,7 +6,7 @@ try:
     import_alarm = ImportAlarm()
 except ImportError:
     import_alarm = ImportAlarm(
-        "The dependencies of the project's browser are not met (ipywidgets, IPython)."
+        "The dependencies of the project's browser are not fulfilled (ipywidgets, IPython)."
     )
 from pyiron_contrib.generic.filedata import DisplayItem
 
@@ -26,13 +26,7 @@ class Project(ProjectCore):
 
     @property
     def browser(self):
-        """
-        Provides a file browser to inspect the local data system.
-
-        Args:
-             Vbox (:class:`ipywidgets.Vbox` / None): Vbox in which the file browser is displayed.
-                                            If None, a new Vbox is provided.
-        """
+        """ Provides a browser to inspect the local data system.  """
         if self._project_browser is None:
             self._project_browser = ProjectBrowser(project=self,
                                                    show_files=False,
@@ -101,7 +95,7 @@ class Project(ProjectCore):
         Returns:
             Project: copy of the project object
         """
-        new = Project(path=self.path, user=self.user, sql_query=self.sql_query)
+        new = self.__class__(path=self.path, user=self.user, sql_query=self.sql_query)
         return new
 
     def load_from_jobpath(self, job_id=None, db_entry=None, convert_to_object=True):
@@ -121,5 +115,5 @@ class Project(ProjectCore):
         job = super(Project, self).load_from_jobpath(
             job_id=job_id, db_entry=db_entry, convert_to_object=convert_to_object
         )
-        job.project_hdf5._project = Project(path=job.project_hdf5.file_path)
+        job.project_hdf5._project = self.__class__(path=job.project_hdf5.file_path)
         return job
