@@ -1,4 +1,9 @@
-from pyiron_base import InputList
+import os
+import posixpath
+
+from pyiron_base import InputList, ProjectHDFio
+from pyiron_base.project.path import GenericPath
+from pyiron_contrib.generic.filedata import DisplayItem
 from pyiron_contrib.project.project import Project as ProjectCore
 
 class Project(ProjectCore):
@@ -63,3 +68,124 @@ class Project(ProjectCore):
         new.load_metadata()
         new._load_projectinfo()
         return new
+
+
+class FileBrowseProject(GenericPath):
+    def __init__(self, path="/", user=None, sql_query=None, default_working_directory=False):
+        path = self._convert_str_to_abs_path(path)
+        super().__init__(root_path='/', project_path=path)
+        if not os.path.isdir(self.path):
+            raise ValueError
+
+    def copy(self):
+        """
+        copy of the current FileBrowseProject
+
+        Returns:
+            FileBrowseProject:
+        """
+        return self.__class__(path=self.path)
+
+    def _convert_str_to_abs_path(self, path):
+        """
+        Convert path in string representation to an GenericPath object
+
+        Args:
+            path (str): path
+
+        Returns:
+            str: absolute path
+        """
+        if isinstance(path, GenericPath):
+            return path.path
+        elif isinstance(path, str):
+            path = os.path.normpath(path)
+            if not os.path.isabs(path):
+                path_local = self._windows_path_to_unix_path(
+                    posixpath.abspath(os.curdir)
+                )
+                path = posixpath.join(path_local, path)
+            return_path = self._windows_path_to_unix_path(path)
+            return return_path
+        else:
+            raise TypeError("Only string and GenericPath objects are supported.")
+
+    def listdir(self):
+        """
+        equivalent to os.listdir
+        list all files and directories in this path
+
+        Returns:
+            list: list of folders and files in the current project path
+        """
+        try:
+            return os.listdir(self.path)
+        except OSError:
+            return []
+
+    def open(self, path):
+        if os.path.isabs(path):
+            return self.__class__(path)
+        else:
+            new = self.__class__(self.path)
+            new.project_path = posixpath.normpath(posixpath.join(self.project_path, path))
+            return new
+
+    def list_nodes(self):
+        """ List all files in the current directory. """
+        return [f for f in self.listdir() if os.path.isfile(os.path.join(self.path, f))]
+
+    def list_groups(self):
+        """ List all directories in the current directory. """
+        return [f for f in self.listdir() if os.path.isdir(os.path.join(self.path, f))]
+
+    def __getitem__(self, item):
+        """
+        Get item from project
+
+        Args:
+            item (str, int): key
+
+        Returns:
+            Project, GenericJob, JobCore, dict, list, float: basically any kind of item inside the project.
+        """
+        if isinstance(item, slice):
+            raise NotImplementedError("Implement if needed, e.g. for [:]")
+        else:
+            item_lst = [sub_item.replace(" ", "") for sub_item in item.split("/")]
+            if len(item_lst) > 1:
+                return self._get_item_helper(
+                    item=item_lst[0], convert_to_object=True
+                ).__getitem__("/".join(item_lst[1:]))
+        return self._get_item_helper(item=item, convert_to_object=True)
+
+    def _get_item_helper(self, item, convert_to_object=True):
+        """
+        Internal helper function to get item from project
+
+        Args:
+            item (str, int): key
+        Returns:
+            Project, GenericJob, JobCore, dict, list, float: basically any kind of item inside the project.
+        """
+        if item == "..":
+            return self.open(item)
+        if item in self.list_nodes():
+            file_name = posixpath.join(self.path, "{}".format(item))
+            if os.path.splitext(file_name)[1] == '.h5':
+                return ProjectHDFio(project=self, file_name=file_name)
+            return DisplayItem(file_name).display()
+        if item in self.list_groups():
+            return self.open(item)
+        raise ValueError("Unknown item: {}".format(item))
+
+    def __repr__(self):
+        """
+        Human readable string representation of the project object
+
+        Returns:
+            str: string representation
+        """
+        return str(
+            {"groups": self.list_groups(), "nodes": self.list_nodes()}
+        )
