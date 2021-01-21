@@ -6,6 +6,7 @@ from pyiron_base.project.path import GenericPath
 from pyiron_contrib.generic.filedata import DisplayItem
 from pyiron_contrib.project.project import Project as ProjectCore
 
+
 class Project(ProjectCore):
 
     """ Basically a wrapper of a generic Project to extend for metadata. """
@@ -71,11 +72,13 @@ class Project(ProjectCore):
 
 
 class FileBrowseProject(GenericPath):
-    def __init__(self, path="/", user=None, sql_query=None, default_working_directory=False):
+    def __init__(self, path="/"):
         path = self._convert_str_to_abs_path(path)
+        self.hdf_as_dirs = False
         super().__init__(root_path='/', project_path=path)
         if not os.path.isdir(self.path):
-            raise ValueError
+            raise ValueError("Path {} is not a directory and {} does not create new directories."
+                             .format(path, self.__class__))
 
     def copy(self):
         """
@@ -84,7 +87,9 @@ class FileBrowseProject(GenericPath):
         Returns:
             FileBrowseProject:
         """
-        return self.__class__(path=self.path)
+        new = self.__class__(path=self.path)
+        new.hdf_as_dirs = self.hdf_as_dirs
+        return new
 
     def _convert_str_to_abs_path(self, path):
         """
@@ -125,19 +130,31 @@ class FileBrowseProject(GenericPath):
 
     def open(self, path):
         if os.path.isabs(path):
-            return self.__class__(path)
+            new = self.__class__(path)
         else:
             new = self.__class__(self.path)
             new.project_path = posixpath.normpath(posixpath.join(self.project_path, path))
-            return new
+        new.hdf_as_dirs = self.hdf_as_dirs
+        return new
 
     def list_nodes(self):
         """ List all files in the current directory. """
-        return [f for f in self.listdir() if os.path.isfile(os.path.join(self.path, f))]
+        file_list = []
+        for f in self.listdir():
+            if os.path.isfile(os.path.join(self.path, f)):
+                if not (self.hdf_as_dirs and os.path.splitext(f)[1] == ".h5"):
+                    file_list.append(f)
+        return file_list
 
     def list_groups(self):
         """ List all directories in the current directory. """
-        return [f for f in self.listdir() if os.path.isdir(os.path.join(self.path, f))]
+        group_list = []
+        for f in self.listdir():
+            if os.path.isdir(os.path.join(self.path, f)):
+                group_list.append(f)
+            if self.hdf_as_dirs and os.path.isfile(os.path.join(self.path, f)) and os.path.splitext(f)[1] == ".h5":
+                group_list.append(f)
+        return group_list
 
     def __getitem__(self, item):
         """
@@ -176,6 +193,9 @@ class FileBrowseProject(GenericPath):
                 return ProjectHDFio(project=self, file_name=file_name)
             return DisplayItem(file_name).display()
         if item in self.list_groups():
+            file_name = posixpath.join(self.path, "{}".format(item))
+            if os.path.isfile(file_name) and os.path.splitext(file_name)[1] == '.h5':
+                return ProjectHDFio(project=self, file_name=file_name)
             return self.open(item)
         raise ValueError("Unknown item: {}".format(item))
 
