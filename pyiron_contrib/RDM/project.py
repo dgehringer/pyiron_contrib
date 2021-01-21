@@ -23,9 +23,10 @@ class Project(ProjectCore):
         self._load_projectinfo()
     __init__.__doc__ = ProjectCore.__init__.__doc__
 
-    def open_RDM_GUI(self):
+    @property
+    def RDM_GUI(self):
         from pyiron_contrib.RDM.RDM_gui import GUI_RDM
-        return GUI_RDM(project=self).gui()
+        return GUI_RDM(project=self)
 
     @property
     def metadata(self):
