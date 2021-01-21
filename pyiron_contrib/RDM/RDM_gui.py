@@ -3,7 +3,8 @@ import os
 from datetime import datetime
 
 from pyiron_contrib.RDM.internal_widgets import MultiComboBox, MultiTextBox
-from pyiron_contrib.project.project import Project
+from pyiron_contrib.RDM.project import Project
+from pyiron_contrib.generic.s3io import ProjectS3IO
 from pyiron_contrib.RDM.file_browser import FileBrowser
 from pyiron_base import InputList
 
@@ -33,10 +34,10 @@ class GUI_RDM:
         else:
             self.box = Vbox
         # rmd_project is a relative path like string representation
-        self.default_proj = "SFB1394"
-        if project is not None:
-            self.default_proj = project.base_name
-        self.pr = project
+        if project is None:
+            project = Project('.')
+        self.pr = project.copy()
+        self._initial_project = project.copy()
         self.rdm_project = ""
         self.headerbox = widgets.HBox()
         self.bodybox = widgets.VBox()
@@ -45,16 +46,12 @@ class GUI_RDM:
     def list_nodes(self):
         try:
             nodes = [str(val) for val in self.pr.project_info["Resources"].keys()]
-        except:
+        except(AttributeError, ValueError, KeyError):
             nodes = []
         return nodes
 
     def list_groups(self):
-        if self.pr is None:
-            pr = Project(self.default_proj)
-            return pr.parent_group.list_groups()
-        else:
-            return self.pr.list_groups()
+        return self.pr.list_groups()
 
     def gui(self):
         Hseperator = widgets.HBox(layout=widgets.Layout(border="solid 1px"))
@@ -126,13 +123,24 @@ class GUI_RDM:
         buttons.reverse()
         box.children = tuple(buttons)
 
-    def change_proj(self, b):
-        self.rdm_project = b.path
-        if b.path == "":
-            self.pr = None
+    def _update_project_worker(self, rel_path):
+        try:
+            new_project = self.pr[rel_path]
+        except ValueError:
+            return "No valid path"
         else:
-            self.pr = Project(self.rdm_project)
-        self.rdm_projects = self.list_groups()
+            if new_project is not None:
+                self.pr = new_project
+
+    def change_proj(self, b):
+        if b.path == "":
+            self.pr = self._initial_project
+        else:
+            rel_path = os.path.relpath(b.path, self.rdm_project)
+            if rel_path == '.':
+                return
+            self._update_project_worker(rel_path)
+        self.rdm_project = b.path
         self._update_body(self.bodybox)
         self._update_header(self.headerbox)
 
@@ -158,6 +166,7 @@ class GUI_RDM:
         except ImportError:
             print(repr(self))
 
+
 class GUI_Resource():
     def __init__(self, resource_path, project=None, VBox=None, origin=None):
         self.path = resource_path
@@ -172,12 +181,13 @@ class GUI_Resource():
         self.filebrowser_box = widgets.VBox(layput=widgets.Layout(width="67%",
                                             border="solid 0.5px lightgray"))
         self.metadata_box = widgets.VBox(layout=widgets.Layout(width="33%"))
-        self.filebrowser = FileBrowser(Vbox=self.filebrowser_box,
-                                       s3path=self.path,
-                                       s3_config='config.json',  # TODO: replace with actual setup
-                                       fix_s3_path=True,
-                                       fix_storage_sys=True,
-                                       storage_system='S3')
+        self._s3_pr = ProjectS3IO(self.pr, config='config.json', path=self.path)# TODO: replace with actual setup
+        self._local_browser = FileBrowser(Vbox=self.filebrowser_box,
+                                          project=self.pr)
+        self._s3_browser = FileBrowser(Vbox=self.filebrowser_box,
+                                       project=self._s3_pr,
+                                       fix_path=True,
+                                       )
         self.optionbox = widgets.HBox()
 
     def gui(self):
@@ -251,7 +261,8 @@ class GUI_Resource():
             metadata_dict[widget.old_entry[0]][0] = widget.value
         return metadata_dict
 
-    def _flatten_metadata_dict(self, metadata_dict):
+    @staticmethod
+    def _flatten_metadata_dict(metadata_dict):
         text_separator = " _and_ "
         flat_metadata = {}
         for key, value in metadata_dict.items():
@@ -266,8 +277,8 @@ class GUI_Resource():
     def upload_data(self):
         metadata = self._extract_metadata_dict_from_widget()
         metadata = self._flatten_metadata_dict(metadata)
-        for data in self.filebrowser.data:
-            self.filebrowser.put_data(data, metadata)
+        for data in self._local_browser.data:
+            self._s3_pr.put(data, metadata=metadata)
 
     def _upload_button_clicked(self, b):
         b.disabled = True
@@ -275,17 +286,17 @@ class GUI_Resource():
         if self.displayed_filesystem == 'local':
             if b.description == "Upload New Data":
                 self.upload_data()
-            self.displayed_filesystem = "S3"
+            self._s3_browser.update()
         else:
             self.displayed_filesystem = "local"
-        self.filebrowser.configure(storage_system=self.displayed_filesystem)
+            self._local_browser.update()
         self._update_optionbox(self.optionbox)
         b.disabled = False
 
     def _cancel_button_clicked(self, b):
         if b.description == "Cancel":
             self.displayed_filesystem = "S3"
-            self.filebrowser.configure(storage_system=self.displayed_filesystem)
+            self._s3_browser.update()
             self._update_optionbox(self.optionbox)
         elif self.origin is not None:
             self.origin.update(bodybox=self.bodybox)
@@ -306,8 +317,7 @@ class GUI_Resource():
         optionbox.children = tuple([upload_button, cancel_button])
 
     def _update_body(self, bodybox):
-        childs = [widgets.HBox([self.filebrowser.gui(), self.metadata_box])]
-        childs.append(self.optionbox)
+        childs = [widgets.HBox([self.filebrowser_box, self.metadata_box]), self.optionbox]
         bodybox.children = tuple(childs)
 
 
@@ -497,17 +507,8 @@ class GUI_AddProject():
 
     def add_proj(self, dic):
         if self.pr is not None:
-            #try:
                 pr = self.pr.open(dic["Project Name:*"][0])
                 pr.metadata = dic
-            #except None:
-            #    print ("Failed to open new project.")
-        else:
-            #try:
-                pr = Project(dic["Project Name:*"])
-                pr.metadata = dic
-            #except None:
-            #    print("Failed to open new project.")
         pr.save_metadata()
         if self.origin is not None:
             self.origin.update(bodybox=self.bodybox)
