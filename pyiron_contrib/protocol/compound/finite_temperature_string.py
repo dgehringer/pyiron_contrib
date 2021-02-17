@@ -97,7 +97,7 @@ class FTSEvolution(CompoundVertex):
         id_.thermalization_steps = 10
         id_.n_images = 5
         id_.initial_positions = None
-        id_.cutoff_factor = 0.45
+        id_.cutoff_factor = 0.5
         id_.mixing_fraction = 0.1
         id_.relax_endpoints = False
         id_.smooth_style = 'global'
@@ -225,8 +225,8 @@ class FTSEvolution(CompoundVertex):
             gp.initial_positions.output.initial_positions[-1]
         g.reflect_string.broadcast.default.previous_velocities = gp.initial_velocities.output.velocities[-1]
 
-        g.reflect_string.direct.all_centroid_positions = gp.reparameterize.output.centroids_pos_list[-1]
-        g.reflect_string.broadcast.centroid_positions = gp.reparameterize.output.centroids_pos_list[-1]
+        g.reflect_string.direct.all_centroid_positions = gp.reparameterize.output.all_centroids_positions[-1]
+        g.reflect_string.broadcast.centroid_positions = gp.reparameterize.output.all_centroids_positions[-1]
         g.reflect_string.broadcast.previous_positions = gp.recenter.output.positions[-1]
         g.reflect_string.broadcast.previous_velocities = gp.reflect_atoms.output.velocities[-1]
         g.reflect_string.broadcast.positions = gp.verlet_positions.output.positions[-1]
@@ -240,9 +240,9 @@ class FTSEvolution(CompoundVertex):
         g.reflect_atoms.broadcast.default.previous_positions = \
             gp.initial_positions.output.initial_positions[-1]
         g.reflect_atoms.broadcast.default.previous_velocities = gp.initial_velocities.output.velocities[-1]
-        g.reflect_atoms.direct.default.total_steps = ip.total_steps
+        g.reflect_atoms.direct.default.total_steps = ip._total_steps
 
-        g.reflect_atoms.broadcast.reference_positions = gp.reparameterize.output.centroids_pos_list[-1]
+        g.reflect_atoms.broadcast.reference_positions = gp.reparameterize.output.all_centroids_positions[-1]
         g.reflect_atoms.broadcast.positions = gp.reflect_string.output.positions[-1]
         g.reflect_atoms.broadcast.velocities = gp.reflect_string.output.velocities[-1]
         g.reflect_atoms.broadcast.previous_positions = gp.recenter.output.positions[-1]
@@ -271,8 +271,8 @@ class FTSEvolution(CompoundVertex):
         # running_average_positions
         g.running_average_pos.input.n_children = ip.n_images
         g.running_average_pos.direct.default.thermalization_steps = ip.thermalization_steps
-        g.running_average_pos.direct.default.total_steps = ip.total_steps
-        g.running_average_pos.direct.default.divisor = ip.divisor
+        g.running_average_pos.direct.default.total_steps = ip._total_steps
+        g.running_average_pos.direct.default.divisor = ip._divisor
         g.running_average_pos.broadcast.default.running_average_positions = \
             gp.initial_positions.output.initial_positions[-1]
 
@@ -288,8 +288,8 @@ class FTSEvolution(CompoundVertex):
         g.check_sampling_period.input.default.mod = ip.sampling_period
 
         # mix
-        g.mix.input.default.centroids_pos_list = gp.initial_positions.output.initial_positions[-1]
-        g.mix.input.centroids_pos_list = gp.reparameterize.output.centroids_pos_list[-1]
+        g.mix.input.default.all_centroids_positions = gp.initial_positions.output.initial_positions[-1]
+        g.mix.input.all_centroids_positions = gp.reparameterize.output.all_centroids_positions[-1]
         g.mix.input.mixing_fraction = ip.mixing_fraction
         g.mix.input.relax_endpoints = ip.relax_endpoints
         g.mix.input.running_average_positions = gp.running_average_pos.output.running_average_positions[-1]
@@ -300,10 +300,10 @@ class FTSEvolution(CompoundVertex):
         g.smooth.input.dtau = ip.mixing_fraction
         g.smooth.input.structure = ip.structure_initial
         g.smooth.input.smooth_style = ip.smooth_style
-        g.smooth.input.centroids_pos_list = gp.mix.output.centroids_pos_list[-1]
+        g.smooth.input.all_centroids_positions = gp.mix.output.all_centroids_positions[-1]
 
         # reparameterize
-        g.reparameterize.input.centroids_pos_list = gp.smooth.output.centroids_pos_list[-1]
+        g.reparameterize.input.all_centroids_positions = gp.smooth.output.all_centroids_positions[-1]
         g.reparameterize.input.structure= ip.structure_initial
 
         # calc_static_centroids
@@ -311,7 +311,7 @@ class FTSEvolution(CompoundVertex):
         g.calc_static_centroids.direct.structure = ip.structure_initial
         g.calc_static_centroids.broadcast.project_path = gp.initialize_centroids.output.project_path[-1]
         g.calc_static_centroids.broadcast.job_name = gp.initialize_centroids.output.job_names[-1]
-        g.calc_static_centroids.broadcast.positions = gp.reparameterize.output.centroids_pos_list[-1]
+        g.calc_static_centroids.broadcast.positions = gp.reparameterize.output.all_centroids_positions[-1]
 
         # recenter
         g.recenter.input.n_children = ip.n_images
@@ -319,8 +319,8 @@ class FTSEvolution(CompoundVertex):
         g.recenter.broadcast.default.centroid_positions = gp.initial_positions.output.initial_positions[-1]
         g.recenter.direct.default.centroid_forces = gp.initial_forces.output.zeros[-1]
 
-        g.recenter.direct.all_centroid_positions = gp.reparameterize.output.centroids_pos_list[-1]
-        g.recenter.broadcast.centroid_positions = gp.reparameterize.output.centroids_pos_list[-1]
+        g.recenter.direct.all_centroid_positions = gp.reparameterize.output.all_centroids_positions[-1]
+        g.recenter.broadcast.centroid_positions = gp.reparameterize.output.all_centroids_positions[-1]
         g.recenter.broadcast.centroid_forces = gp.calc_static_centroids.output.forces[-1]
         g.recenter.broadcast.positions = gp.reflect_atoms.output.positions[-1]
         g.recenter.broadcast.forces = gp.calc_static_images.output.forces[-1]
@@ -332,7 +332,7 @@ class FTSEvolution(CompoundVertex):
         gp = Pointer(self.graph)
         return {
             'energy_pot': ~gp.calc_static_centroids.output.energy_pot[-1],
-            'positions': ~gp.reparameterize.output.centroids_pos_list[-1],
+            'positions': ~gp.reparameterize.output.all_centroids_positions[-1],
             'forces': ~gp.calc_static_centroids.output.forces[-1]
         }
 
@@ -366,10 +366,10 @@ class FTSEvolution(CompoundVertex):
         ax.set_ylabel("Energy")
         ax.set_xlabel("Centroid")
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-        return ax
+        plt.show()
 
     def _get_directional_barrier(self, frame=None, anchor_element=0, use_minima=False):
-        energies = self._get_energies(frame=frame)
+        energies = np.array(self._get_energies(frame=frame))
         if use_minima:
             reference = energies.min()
         else:
@@ -490,8 +490,7 @@ class _ConstrainedMD(CompoundVertex):
         g.reflect_string.input.velocities = gp.verlet_positions.output.velocities[-1]
         g.reflect_string.input.previous_positions = gp.reflect_atoms.output.positions[-1]
         g.reflect_string.input.previous_velocities = gp.verlet_velocities.output.velocities[-1]
-        g.reflect_string.input.pbc = ip.structure.pbc
-        g.reflect_string.input.cell = ip.structure.cell.array
+        g.reflect_string.input.structure = ip.structure
 
         # reflect_atoms
         g.reflect_atoms.input.default.previous_positions = ip.positions
@@ -654,8 +653,8 @@ class FTSEvolutionParallel(FTSEvolution):
         g.check_steps.input.threshold = ip.n_steps
 
         # remove_images
-        g.remove_images.input.default.project_path = ip.project_path
-        g.remove_images.input.default.job_names = ip.job_name
+        g.remove_images.input.default.project_path = ip._project_path
+        g.remove_images.input.default.job_names = ip._job_name
 
         g.remove_images.input.project_path = gp.create_images.output.project_path[-1][-1]
         g.remove_images.input.job_names = gp.create_images.output.job_names[-1]
@@ -686,11 +685,11 @@ class FTSEvolutionParallel(FTSEvolution):
         g.constrained_evo.direct.default.all_centroid_positions = gp.initial_positions.output.initial_positions[-1]
         g.constrained_evo.broadcast.default.centroid_positions = gp.initial_positions.output.initial_positions[-1]
 
-        g.constrained_evo.direct.all_centroid_positions = gp.reparameterize.output.centroids_pos_list[-1]
-        g.constrained_evo.broadcast.centroid_positions = gp.reparameterize.output.centroids_pos_list[-1]
+        g.constrained_evo.direct.all_centroid_positions = gp.reparameterize.output.all_centroids_positions[-1]
+        g.constrained_evo.broadcast.centroid_positions = gp.reparameterize.output.all_centroids_positions[-1]
 
         # constrained_evolution - reflect_atoms
-        g.constrained_evo.direct.default.total_steps = ip.total_steps
+        g.constrained_evo.direct.default.total_steps = ip._total_steps
         g.constrained_evo.broadcast.total_steps = gp.constrained_evo.output.total_steps[-1]
         g.constrained_evo.direct.cutoff_distance = gp.cutoff.output.cutoff_distance[-1]
 
@@ -703,7 +702,7 @@ class FTSEvolutionParallel(FTSEvolution):
 
         # constrained_evolution - running_average_positions
         g.constrained_evo.direct.default.thermalization_steps = ip.thermalization_steps
-        g.constrained_evo.direct.default.divisor = ip.divisor
+        g.constrained_evo.direct.default.divisor = ip._divisor
         g.constrained_evo.broadcast.default.running_average_positions = \
             gp.initial_positions.output.initial_positions[-1]
 
@@ -722,8 +721,8 @@ class FTSEvolutionParallel(FTSEvolution):
         g.check_thermalized.input.threshold = ip.thermalization_steps
 
         # mix
-        g.mix.input.default.centroids_pos_list = gp.initial_positions.output.initial_positions[-1]
-        g.mix.input.centroids_pos_list = gp.reparameterize.output.centroids_pos_list[-1]
+        g.mix.input.default.all_centroids_positions = gp.initial_positions.output.initial_positions[-1]
+        g.mix.input.all_centroids_positions = gp.reparameterize.output.all_centroids_positions[-1]
         g.mix.input.mixing_fraction = ip.mixing_fraction
         g.mix.input.relax_endpoints = ip.relax_endpoints
         g.mix.input.running_average_positions = gp.constrained_evo.output.running_average_positions[-1]
@@ -734,10 +733,10 @@ class FTSEvolutionParallel(FTSEvolution):
         g.smooth.input.dtau = ip.mixing_fraction
         g.smooth.input.structure = ip.structure_initial
         g.smooth.input.smooth_style = ip.smooth_style
-        g.smooth.input.centroids_pos_list = gp.mix.output.centroids_pos_list[-1]
+        g.smooth.input.all_centroids_positions = gp.mix.output.all_centroids_positions[-1]
 
         # reparameterize
-        g.reparameterize.input.centroids_pos_list = gp.smooth.output.centroids_pos_list[-1]
+        g.reparameterize.input.all_centroids_positions = gp.smooth.output.all_centroids_positions[-1]
         g.reparameterize.input.structure = ip.structure_initial
 
         # calc_static_centroids
@@ -745,7 +744,7 @@ class FTSEvolutionParallel(FTSEvolution):
         g.calc_static_centroids.direct.structure = ip.structure_initial
         g.calc_static_centroids.broadcast.project_path = gp.create_centroids.output.project_path[-1]
         g.calc_static_centroids.broadcast.job_name = gp.create_centroids.output.job_names[-1]
-        g.calc_static_centroids.broadcast.positions = gp.reparameterize.output.centroids_pos_list[-1]
+        g.calc_static_centroids.broadcast.positions = gp.reparameterize.output.all_centroids_positions[-1]
 
         # recenter
         g.recenter.input.n_children = ip.n_images
@@ -753,8 +752,8 @@ class FTSEvolutionParallel(FTSEvolution):
         g.recenter.broadcast.default.centroid_positions = gp.initial_positions.output.initial_positions[-1]
         g.recenter.broadcast.default.centroid_forces = gp.initial_forces.output.zeros[-1]
 
-        g.recenter.direct.all_centroid_positions = gp.reparameterize.output.centroids_pos_list[-1]
-        g.recenter.broadcast.centroid_positions = gp.reparameterize.output.centroids_pos_list[-1]
+        g.recenter.direct.all_centroid_positions = gp.reparameterize.output.all_centroids_positions[-1]
+        g.recenter.broadcast.centroid_positions = gp.reparameterize.output.all_centroids_positions[-1]
         g.recenter.broadcast.centroid_forces = gp.calc_static_centroids.output.forces[-1]
         g.recenter.broadcast.positions = gp.constrained_evo.output.positions[-1]
         g.recenter.broadcast.forces = gp.constrained_evo.output.forces[-1]
