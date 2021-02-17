@@ -185,13 +185,13 @@ class CentroidsRunningAverageMix(PrimitiveVertex):
 
     Input attributes:
         mixing_fraction (float): The fraction of the running average to mix into centroid (Default is 0.1)
-        centroids_pos_list (list/numpy.ndarray): List of all the centroids along the string
+        all_centroids_positions (list/numpy.ndarray): List of all the centroids along the string
         running_average_list (list/numpy.ndarray): List of running averages
         structure (Atoms): The reference structure.
         relax_endpoints (bool): Whether or not to relax the endpoints of the string. (Default is False.)
 
     Output attributes:
-        centroids_pos_list (list/numpy.ndarray): List centroids updated towards the running average
+        all_centroids_positions (list/numpy.ndarray): List centroids updated towards the running average
     """
 
     def __init__(self, name=None):
@@ -199,15 +199,15 @@ class CentroidsRunningAverageMix(PrimitiveVertex):
         self.input.default.mixing_fraction = 0.1
         self.input.default.relax_endpoints = False
 
-    def command(self, structure, mixing_fraction, centroids_pos_list, running_average_positions, relax_endpoints):
+    def command(self, structure, mixing_fraction, all_centroids_positions, running_average_positions, relax_endpoints):
 
-        centroids_pos_list = np.array(centroids_pos_list)
+        all_centroids_positions = np.array(all_centroids_positions)
         running_average_positions = np.array(running_average_positions)
 
         updated_centroids = []
 
-        for i, (cent, avg) in enumerate(zip(centroids_pos_list, running_average_positions)):
-            if (i == 0 or i == (len(centroids_pos_list) - 1)) and not relax_endpoints:
+        for i, (cent, avg) in enumerate(zip(all_centroids_positions, running_average_positions)):
+            if (i == 0 or i == (len(all_centroids_positions) - 1)) and not relax_endpoints:
                 updated_centroids.append(cent)
             else:
                 displacement = structure.find_mic(avg - cent)
@@ -215,7 +215,7 @@ class CentroidsRunningAverageMix(PrimitiveVertex):
                 updated_centroids.append(cent + update)
 
         return {
-            'centroids_pos_list': np.array(updated_centroids)
+            'all_centroids_positions': updated_centroids
         }
 
 
@@ -228,7 +228,7 @@ class CentroidsSmoothing(PrimitiveVertex):
     Input Attributes:
         kappa (float): Nominal smoothing strength.
         dtau (float): Mixing fraction (from updating the string towards the moving average of the image positions).
-        centroids_pos_list (list/numpy.ndarray): List of all the centroid positions along the string.
+        all_centroids_positions (list/numpy.ndarray): List of all the centroid positions along the string.
         structure (Atoms): The reference structure.
         smooth_style (string): Apply 'global' or 'local' smoothing. (Default is 'global'.)
 
@@ -243,18 +243,19 @@ class CentroidsSmoothing(PrimitiveVertex):
         id_.dtau = 0.1
         id_.smooth_style = 'global'
 
-    def command(self, structure, kappa, dtau, centroids_pos_list, smooth_style):
-        n_images = len(centroids_pos_list)
+    def command(self, structure, kappa, dtau, all_centroids_positions, smooth_style):
+        n_images = len(all_centroids_positions)
         smoothing_strength = kappa * n_images * dtau
         if smooth_style == 'global':
             smoothing_matrix = self._get_smoothing_matrix(n_images, smoothing_strength)
-            smoothed_centroid_positions = np.tensordot(smoothing_matrix, np.array(centroids_pos_list), axes=1)
+            smoothed_centroid_positions = all_centroids_positions + \
+                                          np.tensordot(smoothing_matrix, all_centroids_positions, axes=1)
         elif smooth_style == 'local':
-            smoothed_centroid_positions = self._locally_smoothed(smoothing_strength, centroids_pos_list)
+            smoothed_centroid_positions = self._locally_smoothed(smoothing_strength, all_centroids_positions)
         else:
             raise TypeError('Smoothing: choose style = "global" or "local"')
         return {
-            'centroids_pos_list': smoothed_centroid_positions
+            'all_centroids_positions': smoothed_centroid_positions
         }
 
     @staticmethod
@@ -275,36 +276,38 @@ class CentroidsSmoothing(PrimitiveVertex):
         second_order_deriv = toeplitz(toeplitz_rowcol, toeplitz_rowcol)
         second_order_deriv[0] = np.zeros(n_images)
         second_order_deriv[-1] = np.zeros(n_images)
-        smooth_mat_inv = np.eye(n_images) - smoothing_strength * second_order_deriv
+        # smooth_mat_inv = np.eye(n_images) - smoothing_strength * second_order_deriv
+        smooth_matrix = smoothing_strength * second_order_deriv
 
-        return np.linalg.inv(smooth_mat_inv)
+        # return np.linalg.inv(smooth_mat_inv)
+        return smooth_matrix
 
     @staticmethod
-    def _locally_smoothed(structure, smoothing_strength, centroids_pos_list):
+    def _locally_smoothed(structure, smoothing_strength, all_centroids_positions):
         """
         A function that applies local smoothing by taking into account immediate neighbors.
 
         Attributes:
             structure (Atoms): The reference structure.
             smoothing_strength (float): The smoothing penalty
-            centroids_pos_list (list): The list of centroids
+            all_centroids_positions (list): The list of centroids
 
         Returns:
             smoothing_matrix
         """
-        smoothed_centroid_positions = [centroids_pos_list[0]]
-        for i, cent in enumerate(centroids_pos_list[1:-1]):
-            left = centroids_pos_list[i]
-            right = centroids_pos_list[i+2]
+        smoothed_centroid_positions = [all_centroids_positions[0]]
+        for i, cent in enumerate(all_centroids_positions[1:-1]):
+            left = all_centroids_positions[i]
+            right = all_centroids_positions[i+2]
             disp_left = structure.find_mic(cent - left)
             disp_right = structure.find_mic(right - cent)
             switch = (1 + np.cos(np.pi * np.tensordot(disp_left, disp_right) / (
                         np.linalg.norm(disp_left) * (np.linalg.norm(disp_right))))) / 2
             r_star = smoothing_strength * switch * (disp_right - disp_left)
             smoothed_centroid_positions.append(cent + r_star)
-        smoothed_centroid_positions.append(centroids_pos_list[-1])
+        smoothed_centroid_positions.append(all_centroids_positions[-1])
 
-        return smoothed_centroid_positions
+        return np.array(smoothed_centroid_positions)
 
 
 class CentroidsReparameterization(PrimitiveVertex):
@@ -313,26 +316,26 @@ class CentroidsReparameterization(PrimitiveVertex):
         using a piecewise function
 
     Input attributes:
-        centroids_pos_list (list/numpy.ndarray): List of all the centroids along the string
+        all_centroids_positions (list/numpy.ndarray): List of all the centroids along the string
         structure (Atoms): The reference structure.
 
     Output attributes:
-        centroids_pos_list (list/numpy.ndarray): List of equally spaced centroids
+        all_centroids_positions (list/numpy.ndarray): List of equally spaced centroids
     """
 
     def __init__(self, name=None):
         super(CentroidsReparameterization, self).__init__(name=name)
 
-    def command(self, structure, centroids_pos_list):
+    def command(self, structure, all_centroids_positions):
         # How long is the piecewise parameterized path to begin with?
 
-        lengths = self._find_lengths(centroids_pos_list, structure)
+        lengths = self._find_lengths(all_centroids_positions, structure)
         length_tot = lengths[-1]
-        length_per_frame = length_tot / (len(centroids_pos_list) - 1)
+        length_per_frame = length_tot / (len(all_centroids_positions) - 1)
 
         # Find new positions for the re-parameterized jobs
-        new_positions = [centroids_pos_list[0]]
-        for n_left, cent in enumerate(centroids_pos_list[1:-1]):
+        reparameterized_centroids = [all_centroids_positions[0]]
+        for n_left, cent in enumerate(all_centroids_positions[1:-1]):
             n = n_left + 1
             length_target = n * length_per_frame
 
@@ -345,20 +348,17 @@ class CentroidsReparameterization(PrimitiveVertex):
                 highest_not_over = 0
 
             # Interpolate from the last position not in excess
-            start = centroids_pos_list[highest_not_over]
-            end = centroids_pos_list[highest_not_over + 1]
+            start = all_centroids_positions[highest_not_over]
+            end = all_centroids_positions[highest_not_over + 1]
             disp = structure.find_mic(end - start)
             interp_dir = disp / np.linalg.norm(disp)
             interp_mag = length_target - lengths[highest_not_over]
 
-            new_positions.append(start + interp_mag * interp_dir)
-        new_positions.append(centroids_pos_list[-1])
-
-        # Apply the new positions all at once
-        centroids_pos_list = new_positions
+            reparameterized_centroids.append(start + interp_mag * interp_dir)
+        reparameterized_centroids.append(all_centroids_positions[-1])
 
         return {
-            'centroids_pos_list': centroids_pos_list
+            'all_centroids_positions': reparameterized_centroids
         }
 
     @staticmethod
