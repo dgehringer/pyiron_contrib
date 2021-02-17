@@ -193,10 +193,10 @@ class NEB(CompoundVertex):
         ax.set_ylabel("Energy")
         ax.set_xlabel("Image")
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-        return ax
+        plt.show()
 
     def _get_directional_barrier(self, frame=None, anchor_element=0, use_minima=False):
-        energies = self._get_energies(frame=frame)
+        energies = np.array(self._get_energies(frame=frame))
         if use_minima:
             reference = energies.min()
         else:
