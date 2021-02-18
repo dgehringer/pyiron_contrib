@@ -277,10 +277,10 @@ class CentroidsSmoothing(PrimitiveVertex):
         second_order_deriv[0] = np.zeros(n_images)
         second_order_deriv[-1] = np.zeros(n_images)
         # smooth_mat_inv = np.eye(n_images) - smoothing_strength * second_order_deriv
-        smooth_matrix = smoothing_strength * second_order_deriv
+        smoothing_matrix = smoothing_strength * second_order_deriv
 
         # return np.linalg.inv(smooth_mat_inv)
-        return smooth_matrix
+        return smoothing_matrix
 
     @staticmethod
     def _locally_smoothed(structure, smoothing_strength, all_centroids_positions):
@@ -293,7 +293,7 @@ class CentroidsSmoothing(PrimitiveVertex):
             all_centroids_positions (list): The list of centroids
 
         Returns:
-            smoothing_matrix
+            smoothed_centroid_positions
         """
         smoothed_centroid_positions = [all_centroids_positions[0]]
         for i, cent in enumerate(all_centroids_positions[1:-1]):
