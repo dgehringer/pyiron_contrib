@@ -666,6 +666,7 @@ class Protocol(CompoundVertex, GenericJob):
         """
         if hdf is None:
             hdf = self.project_hdf5
+        self.graph.to_hdf(hdf=hdf, group_name="graph")  # this line saves 'graph' to the hdf5
         super(CompoundVertex, self).to_hdf(hdf=hdf, group_name=group_name)
 
     def from_hdf(self, hdf=None, group_name=None):
@@ -677,7 +678,8 @@ class Protocol(CompoundVertex, GenericJob):
         """
         if hdf is None:
             hdf = self.project_hdf5
-        super(CompoundVertex, self).from_hdf(hdf=hdf, group_name=group_name)
+        super(Protocol, self).from_hdf(hdf=hdf, group_name=group_name)
+        # this seems to be working as of 18/02/2020
 
 
 class Graph(dict, LoggerMixin):
