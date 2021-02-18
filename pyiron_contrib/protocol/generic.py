@@ -454,8 +454,9 @@ class CompoundVertex(Vertex):
             hdf (ProjectHDFio): HDF5 group object.
             group_name (str): HDF5 subgroup name - optional
         """
+        with hdf.open(self.vertex_name) as graph_hdf:
+            self.graph.to_hdf(hdf=graph_hdf, group_name="graph")
         super(CompoundVertex, self).to_hdf(hdf=hdf, group_name=group_name)
-        self.graph.to_hdf(hdf=hdf, group_name="graph")
 
     def from_hdf(self, hdf=None, group_name=None):
         """
@@ -679,7 +680,7 @@ class Protocol(CompoundVertex, GenericJob):
         if hdf is None:
             hdf = self.project_hdf5
         super(Protocol, self).from_hdf(hdf=hdf, group_name=group_name)
-        # this seems to be working as of 18/02/2020
+        # this seems to be working as of 18/02/2021
 
 
 class Graph(dict, LoggerMixin):
