@@ -161,11 +161,14 @@ class ParallelList(ListVertex):
     def __init__(self, child_type, sleep_time=0):
         super(ParallelList, self).__init__(child_type)
         self.sleep_time = sleep_time
+        self.count = 0
 
     def command(self, n_children):
         """This controls how the commands are run and is about logistics."""
         if self.children is None:
             self._initialize(n_children)
+
+        self.count += 1
 
         for child in self.children:
             child.parallel_setup()
@@ -186,8 +189,6 @@ class ParallelList(ListVertex):
             job.join()
             time.sleep(sleep_time)
 
-        print(all_child_output.keys())
-
         ordered_child_output = dict.fromkeys(range(len(all_child_output)))
         for i in range(len(all_child_output)):
             ordered_child_output[i] = all_child_output[i]
@@ -204,7 +205,7 @@ class ParallelList(ListVertex):
             output_data = None
 
         stop_time = time.time()
-        print('Time elapsed :', stop_time - start_time)
+        print('Sample no. {} collected in {} seconds'.format(self.count, stop_time - start_time))
 
         return output_data
 
