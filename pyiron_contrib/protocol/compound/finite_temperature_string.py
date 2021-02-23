@@ -12,9 +12,9 @@ from pyiron_contrib.protocol.generic import CompoundVertex, Protocol
 from pyiron_contrib.protocol.primitive.one_state import CreateJob, Counter, CutoffDistance, ExternalHamiltonian, \
     InitialPositions, RemoveJob, RandomVelocity, SphereReflection, VerletPositionUpdate, \
     VerletVelocityUpdate, Zeros
-from pyiron_contrib.protocol.primitive.two_state import IsGEq, ModIsZero
+from pyiron_contrib.protocol.primitive.two_state import AnyVertex, IsGEq, ModIsZero
 from pyiron_contrib.protocol.primitive.fts_vertices import CentroidsRunningAverageMix, CentroidsReparameterization, \
-    CentroidsSmoothing, PositionsRunningAverage, StringRecenter, StringReflect
+    CentroidsSmoothing, CheckConvergence, PositionsRunningAverage, StringRecenter, StringReflect
 from pyiron_contrib.protocol.list import SerialList, ParallelList
 from pyiron_contrib.protocol.utils import Pointer
 
@@ -103,10 +103,13 @@ class FTSEvolution(CompoundVertex):
         id_.smooth_style = 'global'
         id_.nominal_smoothing = 0.1
         id_.use_reflection = True
+        id_.n_energy_samples = 10
+        id_.tolerance = 0.001
         id_._divisor = 1
         id_._total_steps = 0
         id_._project_path = None
         id_._job_name = None
+        id_._recent_energy_list = None
 
     def define_vertices(self):
         # Graph components
@@ -591,6 +594,8 @@ class FTSEvolutionParallel(FTSEvolution):
         g.calc_static_centroids = SerialList(ExternalHamiltonian)
         g.recenter = SerialList(StringRecenter)
         g.clock = Counter()
+        g.check_convergence = CheckConvergence()
+        g.exit = AnyVertex()
 
     def define_execution_flow(self):
         # Execution flow
@@ -612,9 +617,13 @@ class FTSEvolutionParallel(FTSEvolution):
             g.reparameterize,
             g.calc_static_centroids,
             g.recenter,
-            g.check_steps
+            g.check_convergence, 'false',
+            g.exit
         )
         g.make_edge(g.check_thermalized, g.check_steps, 'false')
+        g.make_edge(g.check_steps, g.exit, 'true')
+        g.make_edge(g.check_convergence, g.exit, 'true')
+        g.make_edge(g.exit, g.check_steps, 'false')
         g.starting_vertex = g.create_centroids
         g.restarting_vertex = g.check_steps
 
@@ -759,7 +768,34 @@ class FTSEvolutionParallel(FTSEvolution):
         g.recenter.broadcast.forces = gp.constrained_evo.output.forces[-1]
         g.recenter.direct.structure = ip.structure_initial
 
+        # check_convergence
+        g.check_convergence.input.all_centroid_energies = gp.calc_static_centroids.output.energy_pot[-1]
+        g.check_convergence.input.n_energy_samples = ip.n_energy_samples
+        g.check_convergence.input.tolerance = ip.tolerance
+        g.check_convergence.input.default.recent_energy_list = ip._recent_energy_list
+        g.check_convergence.input.recent_energy_list = gp.check_convergence.output.recent_energy_list[-1]
+
+        # exit
+        g.exit.input.vertices = [
+            gp.check_steps,
+            gp.check_convergence
+        ]
+        g.exit.input.print_strings = [
+            'Maximum steps reached',
+            'Convergence reached'
+        ]
+
         self.set_graph_archive_clock(gp.clock.output.n_counts[-1])
+
+    def get_output(self):
+        gp = Pointer(self.graph)
+        return {
+            'energy_pot': ~gp.calc_static_centroids.output.energy_pot[-1],
+            'positions': ~gp.reparameterize.output.all_centroids_positions[-1],
+            'forces': ~gp.calc_static_centroids.output.forces[-1],
+            'recent_energy_list': ~gp.check_convergence.output.recent_energy_list[-1],
+            'total_steps': ~gp.clock.output.n_counts[-1]
+        }
 
 
 class ProtocolFTSEvolutionParallel(Protocol, FTSEvolutionParallel):
