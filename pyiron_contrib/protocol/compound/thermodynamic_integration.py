@@ -807,9 +807,9 @@ class HarmonicTILDParallel(HarmonicTILD):
         g.post.input.n_samples = gp.run_lambda_points.output.n_samples[-1][-1]
 
         # exit
-        g.exit.input.vertices = [
-            gp.check_steps,
-            gp.check_convergence
+        g.exit.input.vertex_states = [
+            gp.check_steps.vertex_state,
+            gp.check_convergence.vertex_state
         ]
         g.exit.input.print_strings = [
             'Maximum steps reached',
@@ -1651,9 +1651,9 @@ class VacancyTILDParallel(VacancyTILD):
         g.post.input.n_samples = gp.run_lambda_points.output.n_samples[-1][-1]
 
         # exit
-        g.exit.input.vertices = [
-            gp.check_steps,
-            gp.check_convergence
+        g.exit.input.vertex_states = [
+            gp.check_steps.vertex_state,
+            gp.check_convergence.vertex_state
         ]
         g.exit.input.print_strings = [
             'Maximum steps reached',
@@ -2075,9 +2075,9 @@ class VacancyFormation(VacancyTILDParallel):
         g.formation_energy_fep.input.inter_to_vac_se = gp.post_inter_to_vac.output.fep_free_energy_se[-1]
 
         # exit
-        g.exit.input.vertices = [
-            gp.check_steps,
-            gp.check_convergence
+        g.exit.input.vertex_states = [
+            gp.check_steps.vertex_state,
+            gp.check_convergence.vertex_state
         ]
         g.exit.input.print_strings = [
             'Maximum steps reached',

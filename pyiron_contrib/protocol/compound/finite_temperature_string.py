@@ -776,9 +776,9 @@ class FTSEvolutionParallel(FTSEvolution):
         g.check_convergence.input.recent_energy_list = gp.check_convergence.output.recent_energy_list[-1]
 
         # exit
-        g.exit.input.vertices = [
-            gp.check_steps,
-            gp.check_convergence
+        g.exit.input.vertex_states = [
+            gp.check_steps.vertex_state,
+            gp.check_convergence.vertex_state
         ]
         g.exit.input.print_strings = [
             'Maximum steps reached',

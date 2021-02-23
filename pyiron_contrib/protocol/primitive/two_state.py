@@ -92,18 +92,15 @@ class AnyVertex(BoolVertex):
         print_strings (list): The list of strings to print should the associated vertex be true.
     """
 
-    def command(self, vertices, print_strings):
+    def command(self, vertex_states, print_strings):
         bool_list = []
-        for i in vertices:
-            if isinstance(i, PrimitiveVertex):
-                if i.vertex_state == "true":
-                    bool_list.append(True)
-                else:
-                    bool_list.append(False)
+        for i in vertex_states:
+            if i == "true":
+                bool_list.append(True)
             else:
-                raise TypeError(str(i) + ' is not an instance of PrimitiveVertex.')
+                bool_list.append(False)
 
-        print_condition = (len(print_strings) == len(vertices))
+        print_condition = (len(print_strings) == len(vertex_states))
 
         if np.any(bool_list):
             if bool_list[0]:

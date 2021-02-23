@@ -680,7 +680,6 @@ class Protocol(CompoundVertex, GenericJob):
         if hdf is None:
             hdf = self.project_hdf5
         super(Protocol, self).from_hdf(hdf=hdf, group_name=group_name)
-        # this seems to be working as of 18/02/2021
 
 
 class Graph(dict, LoggerMixin):
