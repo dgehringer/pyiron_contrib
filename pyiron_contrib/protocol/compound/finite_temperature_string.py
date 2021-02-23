@@ -76,6 +76,11 @@ class FTSEvolution(CompoundVertex):
         use_reflection (boolean): Turn on or off `SphereReflection`. Using sphere reflection restricts each atom
             in the simulation cell to evolve within the Wigner-Seitz cell of its reference position. This is
             helpful to restrict atom-hopping in the presence of a vacancy at higher temperatures. (Default is True.)
+        n_energy_samples (int): Number of energy samples of each centroid to calculate the std (Default is 10.)
+        tolerance (float): The value of std below which the string is considered to be converged (Default is 0.001.)
+        anchor_element (int): The centroid number to use as the reference to compute the barrier (Default is 0.)
+        use_minima (bool): Whether to use the minima of the energies to compute the barrier (Default is
+                False, use the 0th value.)
 
     Output attributes:
         energy_pot (list[float]): Total potential energy of the system in eV.
@@ -105,6 +110,8 @@ class FTSEvolution(CompoundVertex):
         id_.use_reflection = True
         id_.n_energy_samples = 10
         id_.tolerance = 0.001
+        id_.anchor_element = 0
+        id_.use_minima = False
         id_._divisor = 1
         id_._total_steps = 0
         id_._project_path = None
@@ -385,7 +392,7 @@ class FTSEvolution(CompoundVertex):
 
         Args:
             frame (int): A particular dump. (Default is None, the final dump.)
-            use_minima (bool): Whether to use the minima of the energies to compute tha barrier. (Default is
+            use_minima (bool): Whether to use the minima of the energies to compute the barrier. (Default is
                 False, use the 0th value.)
 
         Returns:
@@ -772,6 +779,8 @@ class FTSEvolutionParallel(FTSEvolution):
         g.check_convergence.input.all_centroid_energies = gp.calc_static_centroids.output.energy_pot[-1]
         g.check_convergence.input.n_energy_samples = ip.n_energy_samples
         g.check_convergence.input.tolerance = ip.tolerance
+        g.check_convergence.input.anchor_element = ip.anchor_element
+        g.check_convergence.input.use_minima = ip.use_minima
         g.check_convergence.input.default.recent_energy_list = ip._recent_energy_list
         g.check_convergence.input.recent_energy_list = gp.check_convergence.output.recent_energy_list[-1]
 

@@ -392,6 +392,9 @@ class CheckConvergence(BoolVertex):
         n_energy_samples (int): Number of energy samples of each centroid to calculate the std (Default is 10.)
         tolerance (float): The value of std below which the string is considered to be converged (Default is 0.001.)
         recent_energy_list (list): List of recent energies considered to compute the std
+        anchor_element (int): The centroid number to use as the reference to compute the barrier (Default is 0.)
+        use_minima (bool): Whether to use the minima of the energies to compute the barrier (Default is
+                False, use the 0th value.)
 
     Output attributes:
         recent_energy_list (list): List of recent energies considered to compute the std
@@ -402,11 +405,22 @@ class CheckConvergence(BoolVertex):
         self.input.default.n_energy_samples = 10
         self.input.default.tolerance = 0.001
         self.input.default.recent_energy_list = None
+        self.input.default.anchor_element = 0
+        self.input.default.use_minima = False
 
-    def command(self, all_centroid_energies, n_energy_samples, tolerance, recent_energy_list):
+    def command(self, all_centroid_energies, n_energy_samples, tolerance, recent_energy_list, anchor_element,
+                use_minima):
         # initialize convergence_list
         if recent_energy_list is None:
             recent_energy_list = [[] for i in range(len(all_centroid_energies))]
+
+        all_centroid_energies = np.array(all_centroid_energies)
+        if use_minima:
+            reference = all_centroid_energies.min()
+        else:
+            reference = all_centroid_energies[anchor_element]
+        barrier = all_centroid_energies.max() - reference
+        print('Migration Barrier : {}'.format(barrier))
 
         # populate convergence_list and std_list
         std_list = []
@@ -422,6 +436,8 @@ class CheckConvergence(BoolVertex):
                 self.vertex_state = "true"
         else:
             self.vertex_state = "false"
+
+        all_centroid_energies = np.array(all_centroid_energies)
 
         return {
             'recent_energy_list': recent_energy_list
