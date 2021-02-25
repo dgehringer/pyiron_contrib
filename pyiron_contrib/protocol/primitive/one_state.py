@@ -350,7 +350,7 @@ class CreateJob(ExternalHamiltonian):
         """
         super(CreateJob, self).finish()
         if all(v is not None for v in [self._project_path, self._job_names]):
-            pr = Project(path=self._project_path[-1])
+            pr = Project(path=self._project_path)
             job = pr.load(self._job_names)
             if isinstance(job, GenericInteractive):
                 job.interactive_close()
@@ -397,25 +397,6 @@ class MinimizeJob(ExternalHamiltonian):
             'energy_pot': job.output.energy_pot[-1],
             'forces': job.output.forces[-1]
         }
-
-
-class RemoveJob(PrimitiveVertex):
-    """
-    Remove an existing job/s from a project path.
-    Input attributes:
-        project_path (string): The path of the project. (Default is None.)
-        job_names (string): The names of the jobs to be removed. (Default is None.)
-    """
-    def __init__(self, name=None):
-        super(RemoveJob, self).__init__(name=name)
-        self.input.default.project_path = None
-        self.input.default.job_names = None
-
-    def command(self, project_path, job_names):
-        if all(v is not None for v in [project_path, job_names]):
-            pr = Project(path=project_path)
-            for name in job_names:
-                pr.remove_job(name)
 
 
 class GradientDescent(PrimitiveVertex):

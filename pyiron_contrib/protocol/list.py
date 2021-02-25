@@ -228,11 +228,7 @@ class SerialList(ListVertex):
         for child in self.children:
             child.execute()
 
-        output_data = self._extract_output_data_from_children()
-
-        self.finish()
-
-        return output_data
+        return self._extract_output_data_from_children()
 
 
 class AutoList(ParallelList, SerialList):

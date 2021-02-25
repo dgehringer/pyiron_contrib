@@ -10,7 +10,7 @@ from matplotlib.ticker import MaxNLocator
 
 from pyiron_contrib.protocol.generic import CompoundVertex, Protocol
 from pyiron_contrib.protocol.primitive.one_state import CreateJob, Counter, CutoffDistance, ExternalHamiltonian, \
-    InitialPositions, RemoveJob, RandomVelocity, SphereReflection, VerletPositionUpdate, \
+    InitialPositions, RandomVelocity, SphereReflection, VerletPositionUpdate, \
     VerletVelocityUpdate, Zeros
 from pyiron_contrib.protocol.primitive.two_state import AnyVertex, IsGEq, ModIsZero
 from pyiron_contrib.protocol.primitive.fts_vertices import CentroidsRunningAverageMix, CentroidsReparameterization, \
@@ -585,13 +585,13 @@ class FTSEvolutionParallel(FTSEvolution):
         # Graph components
         g = self.graph
         ip = Pointer(self.input)
-        g.create_centroids = ParallelList(CreateJob, sleep_time=ip.sleep_time)
+        g.create_centroids = SerialList(CreateJob)
         g.initial_positions = InitialPositions()
         g.initial_forces = Zeros()
         g.initial_velocities = SerialList(RandomVelocity)
         g.cutoff = CutoffDistance()
         g.check_steps = IsGEq()
-        g.create_images = ParallelList(CreateJob, sleep_time=ip.sleep_time)
+        g.create_images = SerialList(CreateJob)
         g.constrained_evo = ParallelList(_ConstrainedMD, sleep_time=ip.sleep_time)
         g.check_thermalized = IsGEq()
         g.mix = CentroidsRunningAverageMix()
