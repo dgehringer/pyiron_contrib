@@ -585,14 +585,13 @@ class FTSEvolutionParallel(FTSEvolution):
         # Graph components
         g = self.graph
         ip = Pointer(self.input)
-        g.create_centroids = CreateJob()
+        g.create_centroids = ParallelList(CreateJob, sleep_time=ip.sleep_time)
         g.initial_positions = InitialPositions()
         g.initial_forces = Zeros()
         g.initial_velocities = SerialList(RandomVelocity)
         g.cutoff = CutoffDistance()
         g.check_steps = IsGEq()
-        g.remove_images = RemoveJob()
-        g.create_images = CreateJob()
+        g.create_images = ParallelList(CreateJob, sleep_time=ip.sleep_time)
         g.constrained_evo = ParallelList(_ConstrainedMD, sleep_time=ip.sleep_time)
         g.check_thermalized = IsGEq()
         g.mix = CentroidsRunningAverageMix()
@@ -614,7 +613,6 @@ class FTSEvolutionParallel(FTSEvolution):
             g.initial_velocities,
             g.cutoff,
             g.check_steps, 'false',
-            g.remove_images,
             g.create_images,
             g.constrained_evo,
             g.clock,
@@ -641,9 +639,9 @@ class FTSEvolutionParallel(FTSEvolution):
         ip = Pointer(self.input)
 
         # create_centroids
-        g.create_centroids.input.n_images = ip.n_images
-        g.create_centroids.input.ref_job_full_path = ip.ref_job_full_path
-        g.create_centroids.input.structure = ip.structure_initial
+        g.create_centroids.input.n_children = ip.n_images
+        g.create_centroids.direct.ref_job_full_path = ip.ref_job_full_path
+        g.create_centroids.direct.structure = ip.structure_initial
 
         # initial_positions
         g.initial_positions.input.structure_initial = ip.structure_initial
@@ -668,17 +666,10 @@ class FTSEvolutionParallel(FTSEvolution):
         g.check_steps.input.target = gp.clock.output.n_counts[-1]
         g.check_steps.input.threshold = ip.n_steps
 
-        # remove_images
-        g.remove_images.input.default.project_path = ip._project_path
-        g.remove_images.input.default.job_names = ip._job_name
-
-        g.remove_images.input.project_path = gp.create_images.output.project_path[-1][-1]
-        g.remove_images.input.job_names = gp.create_images.output.job_names[-1]
-
         # create_images
-        g.create_images.input.n_images = ip.n_images
-        g.create_images.input.ref_job_full_path = ip.ref_job_full_path
-        g.create_images.input.structure = ip.structure_initial
+        g.create_images.input.n_children = ip.n_images
+        g.create_images.direct.ref_job_full_path = ip.ref_job_full_path
+        g.create_images.direct.structure = ip.structure_initial
 
         # constrained_evolution - initiailze
         g.constrained_evo.input.n_children = ip.n_images

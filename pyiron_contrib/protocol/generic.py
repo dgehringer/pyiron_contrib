@@ -3,6 +3,7 @@
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
 from __future__ import print_function
+
 import sys
 from pyiron_base import GenericJob
 from pyiron_contrib.protocol.utils import IODictionary, InputDictionary, LoggerMixin, Event, EventHandler, \
@@ -325,18 +326,16 @@ class PrimitiveVertex(Vertex):
 
     def execute(self):
         """Just parse the input and do your physics, then store the output."""
-        output_data = self.command(**self.input.resolve())
-        self.update_and_archive(output_data)
+        self.update_and_archive(self.command(**self.input.resolve()))
 
     @abstractmethod
     def command(self, *args, **kwargs):
         """The command method controls the physics"""
         pass
 
-    def execute_parallel(self, n, return_dict):
+    def execute_parallel(self, n, all_child_output):
         """How to execute in parallel when there's a list of these vertices together."""
-        output_data = self.command(**self.input.resolve())
-        return_dict[n] = output_data
+        all_child_output[n] = self.command(**self.input.resolve())
 
 
 class CompoundVertex(Vertex):
@@ -434,6 +433,7 @@ class CompoundVertex(Vertex):
             self.graph.step()
         self.graph.active_vertex = self.graph.restarting_vertex
         self.update_and_archive(self.get_output())
+        self.finish()
 
     def execute_parallel(self, n, all_child_output):
         """How to execute in parallel when there's a list of these vertices together."""

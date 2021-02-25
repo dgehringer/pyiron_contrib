@@ -264,7 +264,7 @@ class ExternalHamiltonian(PrimitiveVertex):
                 job.interactive_flush_frequency = 10 ** 10
                 job.interactive_write_frequency = 10 ** 10
             job.calc_static()
-            job.run()
+            job.run(delete_existing_job=True)
         else:
             raise TypeError('Job of class {} is not compatible.'.format(ref_job.__class__))
 
@@ -330,25 +330,18 @@ class CreateJob(ExternalHamiltonian):
         self._job_names = None
         id_ = self.input.default
         id_.ref_job_full_path = None
-        id_.n_images = 5
         id_.structure = None
 
-    def command(self, ref_job_full_path, n_images, structure, *args, **kwargs):
+    def command(self, ref_job_full_path, structure, *args, **kwargs):
         graph_location = self.get_graph_location()
-        job_names = []
-        project_path = []
-        for i in np.arange(n_images):
-            name = graph_location + '_' + str(i)
-            output = self._initialize(graph_location, ref_job_full_path, structure,
-                                      self._fast_lammps_mode, name)
-            project_path.append(output[0])
-            job_names.append(output[1])
-        self._project_path = project_path
-        self._job_names = job_names
-
+        name = graph_location
+        output = self._initialize(graph_location, ref_job_full_path, structure,
+                                  self._fast_lammps_mode, name)
+        self._project_path = output[0]
+        self._job_names = output[1]
         return {
-            'project_path': project_path,
-            'job_names': job_names
+            'project_path': output[0],
+            'job_names': output[1]
         }
 
     def finish(self):
@@ -358,14 +351,13 @@ class CreateJob(ExternalHamiltonian):
         super(CreateJob, self).finish()
         if all(v is not None for v in [self._project_path, self._job_names]):
             pr = Project(path=self._project_path[-1])
-            for jn in self._job_names:
-                job = pr.load(jn)
-                if isinstance(job, GenericInteractive):
-                    job.interactive_close()
-                    job.status.finished = True
+            job = pr.load(self._job_names)
+            if isinstance(job, GenericInteractive):
+                job.interactive_close()
+                job.status.finished = True
 
 
-class MinimizeReferenceJob(ExternalHamiltonian):
+class MinimizeJob(ExternalHamiltonian):
     """
     Minimizes a job using an external interpreter (e.g. Lammps, Vasp, Sphinx...) outside of the `ExternalHamiltonian`.
         This vertex minimizes the job at constant volume or constant pressure.
@@ -381,7 +373,7 @@ class MinimizeReferenceJob(ExternalHamiltonian):
     """
 
     def __init__(self, name=None):
-        super(MinimizeReferenceJob, self).__init__(name=name)
+        super(MinimizeJob, self).__init__(name=name)
         self._fast_lammps_mode = True
         id_ = self.input.default
         id_.ref_job_full_path = None

@@ -406,7 +406,7 @@ class CheckConvergence(BoolVertex):
         self.input.default.tolerance = 0.001
         self.input.default.recent_energy_list = None
         self.input.default.anchor_element = 0
-        self.input.default.use_minima = False
+        self.input.default.use_minima = True
 
     def command(self, all_centroid_energies, n_energy_samples, tolerance, recent_energy_list, anchor_element,
                 use_minima):
@@ -436,8 +436,6 @@ class CheckConvergence(BoolVertex):
                 self.vertex_state = "true"
         else:
             self.vertex_state = "false"
-
-        all_centroid_energies = np.array(all_centroid_energies)
 
         return {
             'recent_energy_list': recent_energy_list

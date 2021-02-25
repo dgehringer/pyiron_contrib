@@ -174,7 +174,10 @@ class ParallelList(ListVertex):
             child.parallel_setup()
 
         start_time = time.time()
-        sleep_time = ~self.sleep_time
+        if isinstance(self.sleep_time, (float, int)):
+            sleep_time = self.sleep_time
+        elif isinstance(self.sleep_time, Pointer):
+            sleep_time = ~self.sleep_time
 
         all_child_output = Manager().dict()
 
@@ -209,9 +212,6 @@ class ParallelList(ListVertex):
 
         return output_data
 
-    def finish(self):
-        super(ParallelList, self).finish()
-
 
 class SerialList(ListVertex):
     """
@@ -229,6 +229,9 @@ class SerialList(ListVertex):
             child.execute()
 
         output_data = self._extract_output_data_from_children()
+
+        self.finish()
+
         return output_data
 
 
