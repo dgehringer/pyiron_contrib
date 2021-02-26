@@ -437,8 +437,10 @@ class CompoundVertex(Vertex):
 
     def execute_parallel(self, n, all_child_output):
         """How to execute in parallel when there's a list of these vertices together."""
+        self.output.clear()
         self.execute()
         all_child_output[n] = self.get_output()
+        self.input.clear()
 
     def set_graph_archive_clock(self, clock, recursive=False):
         for _, vertex in self.graph.vertices.items():

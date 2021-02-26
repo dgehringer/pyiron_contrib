@@ -12,7 +12,7 @@ from scipy.constants import physical_constants
 from scipy.integrate import simps
 from ase.geometry import get_distances
 
-from pyiron import Project
+from pyiron_base import Project
 from pyiron_atomistics.atomistics.job.interactive import GenericInteractive
 from pyiron_atomistics.lammps.lammps import LammpsInteractive
 from pyiron_contrib.protocol.generic import PrimitiveVertex
@@ -248,12 +248,14 @@ class ExternalHamiltonian(PrimitiveVertex):
         project_path, ref_job_path = split(ref_job_full_path)
         pr = Project(path=project_path)
         ref_job = pr.load(ref_job_path)
-        job = ref_job.copy_to(
-            project=pr,
-            new_job_name=name,
-            input_only=True,
-            new_database_entry=True
-        )
+        if isinstance(ref_job, LammpsInteractive):
+            job = pr.create.job.Lammps(name)
+            job.potential = ref_job.potential
+        else:
+            job = ref_job.copy_template(
+                project=pr,
+                new_job_name=name
+            )
         if structure is not None:
             job.structure = structure
         if isinstance(job, GenericInteractive):
@@ -327,7 +329,7 @@ class CreateJob(ExternalHamiltonian):
         super(CreateJob, self).__init__(name=name)
         self._fast_lammps_mode = True
         self._project_path = None
-        self._job_names = None
+        self._job_name = None
         id_ = self.input.default
         id_.ref_job_full_path = None
         id_.structure = None
@@ -338,7 +340,7 @@ class CreateJob(ExternalHamiltonian):
         output = self._initialize(graph_location, ref_job_full_path, structure,
                                   self._fast_lammps_mode, name)
         self._project_path = output[0]
-        self._job_names = output[1]
+        self._job_name = output[1]
         return {
             'project_path': output[0],
             'job_names': output[1]
@@ -349,9 +351,9 @@ class CreateJob(ExternalHamiltonian):
         Close the interactive job.
         """
         super(CreateJob, self).finish()
-        if all(v is not None for v in [self._project_path, self._job_names]):
+        if all(v is not None for v in [self._project_path, self._job_name]):
             pr = Project(path=self._project_path)
-            job = pr.load(self._job_names)
+            job = pr.load(self._job_name)
             if isinstance(job, GenericInteractive):
                 job.interactive_close()
                 job.status.finished = True
