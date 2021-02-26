@@ -78,7 +78,7 @@ class NEB(CompoundVertex):
     def define_vertices(self):
         # Graph components
         g = self.graph
-        g.initialize_jobs = CreateJob()
+        g.initialize_jobs = SerialList(CreateJob)
         g.interpolate_images = InitialPositions()
         g.check_steps = IsGEq()
         g.calc_static = AutoList(ExternalHamiltonian)
@@ -109,9 +109,9 @@ class NEB(CompoundVertex):
         ip = Pointer(self.input)
 
         # initialize_jobs
-        g.initialize_jobs.input.n_images = ip.n_images
-        g.initialize_jobs.input.ref_job_full_path = ip.ref_job_full_path
-        g.initialize_jobs.input.structure = ip.structure_initial
+        g.initialize_jobs.input.n_children = ip.n_images
+        g.initialize_jobs.direct.ref_job_full_path = ip.ref_job_full_path
+        g.initialize_jobs.direct.structure = ip.structure_initial
 
         # interpolate_images
         g.interpolate_images.input.structure_initial = ip.structure_initial
