@@ -116,7 +116,7 @@ class FTSEvolution(CompoundVertex):
         id_._total_steps = 0
         id_._project_path = None
         id_._job_name = None
-        id_._recent_energy_list = None
+        id_._previous_centroid_positions = None
 
     def define_vertices(self):
         # Graph components
@@ -768,12 +768,14 @@ class FTSEvolutionParallel(FTSEvolution):
 
         # check_convergence
         g.check_convergence.input.all_centroid_energies = gp.calc_static_centroids.output.energy_pot[-1]
-        g.check_convergence.input.n_energy_samples = ip.n_energy_samples
+        g.check_convergence.input.all_centroid_positions = gp.reparameterize.output.all_centroids_positions[-1]
+        g.check_convergence.input.default.previous_centroid_positions = ip._previous_centroid_positions
+        g.check_convergence.input.previous_centroid_positions = \
+            gp.check_convergence.output.previous_centroid_positions[-1]
+        g.check_convergence.input.structure = ip.structure_initial
         g.check_convergence.input.tolerance = ip.tolerance
         g.check_convergence.input.anchor_element = ip.anchor_element
         g.check_convergence.input.use_minima = ip.use_minima
-        g.check_convergence.input.default.recent_energy_list = ip._recent_energy_list
-        g.check_convergence.input.recent_energy_list = gp.check_convergence.output.recent_energy_list[-1]
 
         # exit
         g.exit.input.vertex_states = [
@@ -793,7 +795,7 @@ class FTSEvolutionParallel(FTSEvolution):
             'energy_pot': ~gp.calc_static_centroids.output.energy_pot[-1],
             'positions': ~gp.reparameterize.output.all_centroids_positions[-1],
             'forces': ~gp.calc_static_centroids.output.forces[-1],
-            'recent_energy_list': ~gp.check_convergence.output.recent_energy_list[-1],
+            'convergence_list': ~gp.check_convergence.output.convergence_list[-1],
             'total_steps': ~gp.clock.output.n_counts[-1]
         }
 

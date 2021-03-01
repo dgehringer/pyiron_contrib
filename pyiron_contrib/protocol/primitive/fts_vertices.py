@@ -383,6 +383,65 @@ class CentroidsReparameterization(PrimitiveVertex):
         return lengths
 
 
+# class CheckConvergence(BoolVertex):
+#     """
+#     Check if the energies for each of the centroids are below a threshold.
+#
+#     Input attributes:
+#         all_centroid_energies (list): List of all the centroid energies along the string
+#         n_energy_samples (int): Number of energy samples of each centroid to calculate the std (Default is 10.)
+#         tolerance (float): The value of std below which the string is considered to be converged (Default is 0.001.)
+#         recent_energy_list (list): List of recent energies considered to compute the std
+#         anchor_element (int): The centroid number to use as the reference to compute the barrier (Default is 0.)
+#         use_minima (bool): Whether to use the minima of the energies to compute the barrier (Default is
+#                 False, use the 0th value.)
+#
+#     Output attributes:
+#         recent_energy_list (list): List of recent energies considered to compute the std
+#     """
+#
+#     def __init__(self, name=None):
+#         super(CheckConvergence, self).__init__(name=name)
+#         self.input.default.n_energy_samples = 10
+#         self.input.default.tolerance = 0.001
+#         self.input.default.recent_energy_list = None
+#         self.input.default.anchor_element = 0
+#         self.input.default.use_minima = True
+#
+#     def command(self, all_centroid_energies, n_energy_samples, tolerance, recent_energy_list, anchor_element,
+#                 use_minima):
+#         # initialize convergence_list
+#         if recent_energy_list is None:
+#             recent_energy_list = [[] for i in range(len(all_centroid_energies))]
+#
+#         all_centroid_energies = np.array(all_centroid_energies)
+#         if use_minima:
+#             reference = all_centroid_energies.min()
+#         else:
+#             reference = all_centroid_energies[anchor_element]
+#         barrier = all_centroid_energies.max() - reference
+#         print('Migration Barrier : {}'.format(barrier))
+#
+#         # populate convergence_list and std_list
+#         std_list = []
+#         for j, en in enumerate(all_centroid_energies):
+#             recent_energy_list[j].append(en)
+#             if len(recent_energy_list[j]) > n_energy_samples:
+#                 recent_energy_list[j].pop(0)
+#                 std_list.append(np.std(recent_energy_list[j]))
+#
+#         # check if converged
+#         if len(std_list) != 0:
+#             if np.amax(std_list) < tolerance:
+#                 self.vertex_state = "true"
+#         else:
+#             self.vertex_state = "false"
+#
+#         return {
+#             'recent_energy_list': recent_energy_list
+#         }
+
+
 class CheckConvergence(BoolVertex):
     """
     Check if the energies for each of the centroids are below a threshold.
@@ -402,41 +461,42 @@ class CheckConvergence(BoolVertex):
 
     def __init__(self, name=None):
         super(CheckConvergence, self).__init__(name=name)
-        self.input.default.n_energy_samples = 10
         self.input.default.tolerance = 0.001
-        self.input.default.recent_energy_list = None
         self.input.default.anchor_element = 0
         self.input.default.use_minima = True
+        self.input.default.previous_centroid_positions = None
 
-    def command(self, all_centroid_energies, n_energy_samples, tolerance, recent_energy_list, anchor_element,
-                use_minima):
-        # initialize convergence_list
-        if recent_energy_list is None:
-            recent_energy_list = [[] for i in range(len(all_centroid_energies))]
+    def command(self, all_centroid_energies, all_centroid_positions, previous_centroid_positions, structure,
+                tolerance, anchor_element, use_minima):
 
-        all_centroid_energies = np.array(all_centroid_energies)
+        if previous_centroid_positions is None:
+            self.vertex_state = "false"
+            convergence_list = None
+        else:
+            all_centroid_positions = np.array(all_centroid_positions)
+            previous_centroid_positions = np.array(previous_centroid_positions)
+            disp = structure.find_mic(all_centroid_positions - previous_centroid_positions)
+            convergence_list = []
+            for diff in disp:
+                convergence_list.append(np.linalg.norm(diff))
+
+            # check if converged
+            if len(convergence_list) != 0:
+                if np.amax(convergence_list) < tolerance:
+                    self.vertex_state = "true"
+            else:
+                self.vertex_state = "false"
+
+        previous_centroid_positions = all_centroid_positions
+
         if use_minima:
-            reference = all_centroid_energies.min()
+            reference = np.array(all_centroid_energies).min()
         else:
             reference = all_centroid_energies[anchor_element]
-        barrier = all_centroid_energies.max() - reference
+        barrier = np.array(all_centroid_energies).max() - reference
         print('Migration Barrier : {}'.format(barrier))
 
-        # populate convergence_list and std_list
-        std_list = []
-        for j, en in enumerate(all_centroid_energies):
-            recent_energy_list[j].append(en)
-            if len(recent_energy_list[j]) > n_energy_samples:
-                recent_energy_list[j].pop(0)
-                std_list.append(np.std(recent_energy_list[j]))
-
-        # check if converged
-        if len(std_list) != 0:
-            if np.amax(std_list) < tolerance:
-                self.vertex_state = "true"
-        else:
-            self.vertex_state = "false"
-
         return {
-            'recent_energy_list': recent_energy_list
+            'previous_centroid_positions': previous_centroid_positions,
+            'convergence_list': convergence_list
         }
