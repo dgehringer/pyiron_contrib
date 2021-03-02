@@ -162,6 +162,7 @@ class ParallelList(ListVertex):
         super(ParallelList, self).__init__(child_type)
         self.sleep_time = sleep_time
         self.count = 0
+        self.all_child_output = Manager().dict()
 
     def command(self, n_children):
         """This controls how the commands are run and is about logistics."""
@@ -179,22 +180,21 @@ class ParallelList(ListVertex):
         elif isinstance(self.sleep_time, Pointer):
             sleep_time = ~self.sleep_time
 
-        all_child_output = Manager().dict()
-
         jobs = []
         for i, child in enumerate(self.children):
-            job = Process(target=child.execute_parallel, args=(i, all_child_output))
+            job = Process(target=child.execute_parallel, args=(i, self.all_child_output))
+            jobs.append(job)
             job.start()
             time.sleep(sleep_time)
-            jobs.append(job)
 
         for job in jobs:
             job.join()
+            job.close()
             time.sleep(sleep_time)
 
-        ordered_child_output = dict.fromkeys(range(len(all_child_output)))
-        for i in range(len(all_child_output)):
-            ordered_child_output[i] = all_child_output[i]
+        ordered_child_output = dict.fromkeys(range(len(self.all_child_output)))
+        for i in range(len(self.all_child_output)):
+            ordered_child_output[i] = self.all_child_output[i]
 
         output_keys = list(ordered_child_output[0].keys())  # Assumes that all the children are the same...
         if len(output_keys) > 0:
@@ -207,6 +207,7 @@ class ParallelList(ListVertex):
         else:
             output_data = None
 
+        self.all_child_output.clear()
         stop_time = time.time()
         print('Sample no. {} collected in {} seconds'.format(self.count, stop_time - start_time))
 

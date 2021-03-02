@@ -248,8 +248,9 @@ class CentroidsSmoothing(PrimitiveVertex):
         smoothing_strength = kappa * n_images * dtau
         if smooth_style == 'global':
             smoothing_matrix = self._get_smoothing_matrix(n_images, smoothing_strength)
-            smoothed_centroid_positions = all_centroids_positions + \
-                                          np.tensordot(smoothing_matrix, all_centroids_positions, axes=1)
+            # smoothed_centroid_positions = all_centroids_positions + \
+            #                               np.tensordot(smoothing_matrix, all_centroids_positions, axes=1)
+            smoothed_centroid_positions = np.tensordot(smoothing_matrix, all_centroids_positions, axes=1)
         elif smooth_style == 'local':
             smoothed_centroid_positions = self._locally_smoothed(structure, smoothing_strength,
                                                                  all_centroids_positions)
@@ -277,11 +278,11 @@ class CentroidsSmoothing(PrimitiveVertex):
         second_order_deriv = toeplitz(toeplitz_rowcol, toeplitz_rowcol)
         second_order_deriv[0] = np.zeros(n_images)
         second_order_deriv[-1] = np.zeros(n_images)
-        # smooth_mat_inv = np.eye(n_images) - smoothing_strength * second_order_deriv
-        smoothing_matrix = smoothing_strength * second_order_deriv
+        smooth_mat_inv = np.eye(n_images) - smoothing_strength * second_order_deriv
+        # smoothing_matrix = smoothing_strength * second_order_deriv
 
-        # return np.linalg.inv(smooth_mat_inv)
-        return smoothing_matrix
+        return np.linalg.inv(smooth_mat_inv)
+        # return smoothing_matrix
 
     @staticmethod
     def _locally_smoothed(structure, smoothing_strength, all_centroids_positions):
@@ -381,65 +382,6 @@ class CentroidsReparameterization(PrimitiveVertex):
             length_cummulative += np.linalg.norm(disp)
             lengths.append(length_cummulative)
         return lengths
-
-
-# class CheckConvergence(BoolVertex):
-#     """
-#     Check if the energies for each of the centroids are below a threshold.
-#
-#     Input attributes:
-#         all_centroid_energies (list): List of all the centroid energies along the string
-#         n_energy_samples (int): Number of energy samples of each centroid to calculate the std (Default is 10.)
-#         tolerance (float): The value of std below which the string is considered to be converged (Default is 0.001.)
-#         recent_energy_list (list): List of recent energies considered to compute the std
-#         anchor_element (int): The centroid number to use as the reference to compute the barrier (Default is 0.)
-#         use_minima (bool): Whether to use the minima of the energies to compute the barrier (Default is
-#                 False, use the 0th value.)
-#
-#     Output attributes:
-#         recent_energy_list (list): List of recent energies considered to compute the std
-#     """
-#
-#     def __init__(self, name=None):
-#         super(CheckConvergence, self).__init__(name=name)
-#         self.input.default.n_energy_samples = 10
-#         self.input.default.tolerance = 0.001
-#         self.input.default.recent_energy_list = None
-#         self.input.default.anchor_element = 0
-#         self.input.default.use_minima = True
-#
-#     def command(self, all_centroid_energies, n_energy_samples, tolerance, recent_energy_list, anchor_element,
-#                 use_minima):
-#         # initialize convergence_list
-#         if recent_energy_list is None:
-#             recent_energy_list = [[] for i in range(len(all_centroid_energies))]
-#
-#         all_centroid_energies = np.array(all_centroid_energies)
-#         if use_minima:
-#             reference = all_centroid_energies.min()
-#         else:
-#             reference = all_centroid_energies[anchor_element]
-#         barrier = all_centroid_energies.max() - reference
-#         print('Migration Barrier : {}'.format(barrier))
-#
-#         # populate convergence_list and std_list
-#         std_list = []
-#         for j, en in enumerate(all_centroid_energies):
-#             recent_energy_list[j].append(en)
-#             if len(recent_energy_list[j]) > n_energy_samples:
-#                 recent_energy_list[j].pop(0)
-#                 std_list.append(np.std(recent_energy_list[j]))
-#
-#         # check if converged
-#         if len(std_list) != 0:
-#             if np.amax(std_list) < tolerance:
-#                 self.vertex_state = "true"
-#         else:
-#             self.vertex_state = "false"
-#
-#         return {
-#             'recent_energy_list': recent_energy_list
-#         }
 
 
 class CheckConvergence(BoolVertex):
