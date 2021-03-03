@@ -171,8 +171,8 @@ class ParallelList(ListVertex):
 
         self.count += 1
 
-        for child in self.children:
-            child.parallel_setup()
+        # for child in self.children:
+        #     child.parallel_setup()
 
         start_time = time.time()
         if isinstance(self.sleep_time, (float, int)):
@@ -182,10 +182,9 @@ class ParallelList(ListVertex):
 
         jobs = []
         for i, child in enumerate(self.children):
-            job = Process(target=child.execute_parallel, args=(i, self.all_child_output))
+            job = Process(target=child.execute_parallel, args=(i, self.all_child_output),  )
             jobs.append(job)
             job.start()
-            time.sleep(sleep_time)
 
         for job in jobs:
             job.join()
@@ -207,7 +206,6 @@ class ParallelList(ListVertex):
         else:
             output_data = None
 
-        self.all_child_output.clear()
         stop_time = time.time()
         print('Sample no. {} collected in {} seconds'.format(self.count, stop_time - start_time))
 

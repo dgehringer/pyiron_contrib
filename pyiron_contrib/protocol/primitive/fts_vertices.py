@@ -303,9 +303,10 @@ class CentroidsSmoothing(PrimitiveVertex):
             right = all_centroids_positions[i+2]
             disp_left = structure.find_mic(cent - left)
             disp_right = structure.find_mic(right - cent)
-            switch = (1 + np.cos(np.pi * np.tensordot(disp_left, disp_right) / (
-                        np.linalg.norm(disp_left) * (np.linalg.norm(disp_right))))) / 2
-            r_star = smoothing_strength * switch * (disp_right - disp_left)
+            # switch = (1 + np.cos(np.pi * np.tensordot(disp_left, disp_right) / (
+            #             np.linalg.norm(disp_left) * (np.linalg.norm(disp_right))))) / 2
+            # r_star = smoothing_strength * switch * (disp_right - disp_left)
+            r_star = smoothing_strength * (disp_right - disp_left)
             smoothed_centroid_positions.append(cent + r_star)
         smoothed_centroid_positions.append(all_centroids_positions[-1])
 
