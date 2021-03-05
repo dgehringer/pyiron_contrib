@@ -182,7 +182,7 @@ class ParallelList(ListVertex):
 
         jobs = []
         for i, child in enumerate(self.children):
-            job = Process(target=child.execute_parallel, args=(i, self.all_child_output),  )
+            job = Process(target=child.execute_parallel, args=(i, self.all_child_output))
             jobs.append(job)
             job.start()
 
