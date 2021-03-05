@@ -8,6 +8,9 @@ from pyiron_contrib.protocol.primitive.two_state import BoolVertex
 import numpy as np
 from abc import abstractmethod
 from scipy.linalg import toeplitz
+from scipy.constants import physical_constants, femto
+
+KB = physical_constants['Boltzmann constant in eV/K'][0]
 
 """
 Vertices whose present application extends only to finite temperature string-based protocols.
@@ -53,7 +56,7 @@ class _StringDistances(PrimitiveVertex):
         distances = [np.linalg.norm(structure.find_mic(c_pos - positions)) for c_pos in all_centroid_positions]
         closest_centroid_positions = all_centroid_positions[np.argmin(distances)]
         match_distance = np.linalg.norm(structure.find_mic(closest_centroid_positions - centroid_positions))
-        return match_distance < eps
+        return distances, match_distance < eps
 
 
 class StringRecenter(_StringDistances):
@@ -76,7 +79,9 @@ class StringRecenter(_StringDistances):
         recentered (bool): Whether or not the image got recentered
     """
     def command(self, structure, positions, forces, centroid_positions, centroid_forces, all_centroid_positions, eps):
-        if self.check_closest_to_parent(structure, positions, centroid_positions, all_centroid_positions, eps):
+        _, recenter = self.check_closest_to_parent(structure, positions, centroid_positions,
+                                                   all_centroid_positions, eps)
+        if recenter:
             return {
                 'positions': positions,
                 'forces': forces,
@@ -112,20 +117,110 @@ class StringReflect(_StringDistances):
     """
     def __init__(self, name=None):
         super(StringReflect, self).__init__(name=name)
+        id_ = self.input.default
+        id_.store_reflections = False
+        id_.image_number = None
+        id_.tracker_list = None
+        id_.reflections_matrix = None
+        id_.edge_reflections_matrix = None
+        id_.edge_time_matrix = None
+
+    # def command(self, structure, positions, velocities, previous_positions, previous_velocities, centroid_positions,
+    #             all_centroid_positions, eps):
+    #     if self.check_closest_to_parent(structure, positions, centroid_positions, all_centroid_positions, eps):
+    #         return {
+    #             'positions': positions,
+    #             'velocities': velocities,
+    #             'reflected': False
+    #         }
+    #     else:
+    #         return {
+    #             'positions': previous_positions,
+    #             'velocities': -previous_velocities,
+    #             'reflected': True
+    #         }
 
     def command(self, structure, positions, velocities, previous_positions, previous_velocities, centroid_positions,
-                all_centroid_positions, eps):
-        if self.check_closest_to_parent(structure, positions, centroid_positions, all_centroid_positions, eps):
+                all_centroid_positions, eps, store_reflections, thermalization_steps, image_number, tracker_list,
+                reflections_matrix, edge_reflections_matrix, edge_time_matrix, total_steps):
+
+        n_images = len(all_centroid_positions)
+        n_edges = int(n_images * (n_images - 1) / 2)
+        current_step = total_steps + self.archive.clock
+
+        if (current_step == 0) and store_reflections:  # clock always starts from 1
+            # form the matrices
+            distances, _ = self.check_closest_to_parent(structure, centroid_positions, centroid_positions,
+                                                        all_centroid_positions, eps)
+            image_number = np.argmin(distances)
+            tracker_list = [[None, None] for _ in np.arange(n_images)]
+            reflections_matrix = np.zeros((n_images, n_images))
+            edge_reflections_matrix = np.array([np.zeros((n_edges, n_edges)) for _ in np.arange(n_images)])
+            edge_time_matrix = np.array([np.zeros(n_edges) for _ in np.arange(n_images)])
+
+        # Find distance between positions and each of the centroids
+        distances, check = self.check_closest_to_parent(structure, positions, centroid_positions,
+                                                        all_centroid_positions, eps)
+        closest_centroid_id = np.argmin(distances)
+
+        if store_reflections:
+            tracker = tracker_list[image_number]
+
+        if check:
+            # Return current positions and velocities
+            reflected_positions = positions
+            reflected_velocities = velocities
+
+            if (current_step > thermalization_steps) and store_reflections:
+                # Start reflection tracking
+                if tracker[1] is not None:  # If no reflections, increment time
+                    edge_time_matrix[image_number][tracker[1]] += 1
+                # End reflection tracking
+        elif not check:
+            # Update to previous positions and velocities, if positions are not closest to parent centroid
+            reflected_positions = previous_positions
+            reflected_velocities = -previous_velocities
+
+            if (current_step > thermalization_steps) and store_reflections:
+                # Start reflection tracking
+                reflections_matrix[image_number, closest_centroid_id] += 1  # Save the reflection
+                indices = np.zeros((n_images, n_images))  # images x images
+                indices[image_number, closest_centroid_id] = 1  # Record the edge
+                ind = np.tril(indices) + np.triu(indices).T  # Convert to triangular matrix
+                # Record the index of the edge (N_j)
+                n_j = int(np.nonzero(ind[np.tril_indices(n_images, k=-1)])[0][0])
+
+                if tracker[1] is None:
+                    tracker[1] = n_j  # Initialize N_j
+                elif tracker[1] == n_j:
+                    edge_time_matrix[image_number][n_j] += 1
+                else:
+                    tracker[0] = tracker[1]  # If reflecting off a different edge, change N_j to N_i
+                    tracker[1] = n_j  # Set new N_j
+                    edge_reflections_matrix[image_number][tracker[0], tracker[1]] += 1
+                    # End reflection tracking
+        else:
+            raise ValueError
+
+        if not store_reflections:
             return {
-                'positions': positions,
-                'velocities': velocities,
-                'reflected': False
+                'positions': reflected_positions,
+                'velocities': reflected_velocities,
+                'image_number': image_number,
+                'tracker_list': tracker_list,
+                'reflections_matrix': reflections_matrix,
+                'edge_reflections_matrix': edge_reflections_matrix,
+                'edge_time_matrix': edge_time_matrix
             }
         else:
             return {
-                'positions': previous_positions,
-                'velocities': -previous_velocities,
-                'reflected': True
+                'positions': reflected_positions,
+                'velocities': reflected_velocities,
+                'image_number': image_number,
+                'tracker_list': tracker_list,
+                'reflections_matrix': reflections_matrix,
+                'edge_reflections_matrix': edge_reflections_matrix,
+                'edge_time_matrix': edge_time_matrix
             }
 
 
@@ -443,3 +538,93 @@ class CheckConvergence(BoolVertex):
             'previous_centroid_positions': previous_centroid_positions,
             'convergence_list': convergence_list
         }
+
+
+class MilestonePostProcess(PrimitiveVertex):
+    """
+    Generates jump frequencies of each centroid to the final centroid form the reflections matrix, edge reflections
+        matrix, and the edge time matrix stored by the milestoning vertex.
+
+    Returns:
+        (float): The mean time of first passage from the 0th image to the final image.
+        (list): `n_images - 1` mean times of passage from the 0th Voronoi cell to the final cell.
+        (list): Respective equilibrium probabilities to find the system in each Voronoi cell.
+
+    TODO: Convert the final frequency to THz?
+    """
+
+    def command(self, time_step, reflections_matrix, edge_reflections_matrix, edge_time_matrix, n_images,
+                temperature):
+        n_edges = int(n_images * (n_images - 1) / 2)
+        reflections_matrix = np.sum(reflections_matrix, axis=0)
+        edge_reflections_matrix = np.sum(edge_reflections_matrix, axis=0)
+        edge_time_matrix = np.sum(edge_time_matrix, axis=0)
+        pis = self._get_pi(reflections_matrix, n_images)
+        free_energies = -KB * temperature * np.log(pis)
+
+        # for terminology, refer the following paper: https://doi.org/10.1063/1.3129843
+        n_ij = np.zeros((n_edges, n_edges))
+        r_i = np.zeros(n_edges)
+        for img in np.arange(n_images):
+            n = pis[img] * edge_reflections_matrix[img]
+            r = pis[img] * edge_time_matrix[img]
+            n_ij += n
+            r_i += r
+
+        # The paper uses shows ways to calculate the mean free passage time. The following section is
+        # commented out, as it is redundant. May come in handy for a consistency check?
+
+        # q_ij = []
+        # for i in np.arange(n_edges):
+        #     if r_i[i] != 0:
+        #         q_ij += [n_ij[i] / r_i[i]]
+        #     else:
+        #         q_ij += [np.zeros(n_edges)]
+        #
+        # q_ij = np.array(q_ij)
+
+        p_ij = []
+        tau_i = []
+        n_ji = n_ij.T
+        with np.errstate(invalid='ignore'):  # just ignores the divide by zero error
+            for i in np.arange(n_edges):
+                p_ij += [n_ji[i] / np.sum(n_ji[i])]
+                tau_i += [r_i[i] / np.sum(n_ji[i])]
+        for i in np.arange(n_edges):
+            for j in np.arange(n_edges):
+                if np.isnan(p_ij[i][j]):
+                    p_ij[i][j] = 0
+                    tau_i[i] = 0
+        p_ij = np.array(p_ij)
+        p_new = np.delete(p_ij, n_edges - 1, 0)
+        p_new = np.delete(p_new, n_edges - 1, 1)
+        tau_new = np.delete(tau_i, n_edges - 1, 0)
+
+        t_n = np.linalg.lstsq(np.eye(n_edges - 1) - p_new, tau_new, rcond=None)[0] * time_step * femto
+
+        summation = 0
+        mean_first_passage_times = [t_n[summation]]
+        for i in np.arange(1, len(t_n)):
+            summation += i
+            if summation < len(t_n):
+                mean_first_passage_times.append(t_n[summation])
+        mean_first_passage_times = np.array(mean_first_passage_times)
+        jump_frequencies = 1. / mean_first_passage_times
+
+        return {
+            'equilibrium_probability': pis,
+            'free_energies': free_energies,
+            'jump_frequencies': jump_frequencies,
+            'mean_first_passage_times': mean_first_passage_times,
+            'reflections_matrix': reflections_matrix,
+            'edge_reflections_matrix': edge_reflections_matrix,
+            'edge_time_matrix': edge_time_matrix,
+        }
+
+    @staticmethod
+    def _get_pi(reflections_matrix, n_images):
+        dia = np.eye(n_images) * np.sum(reflections_matrix, axis=1)
+        pi_mat_a = np.append(reflections_matrix.T - dia, [np.ones(n_images)], axis=0)
+        pi_vec_b = np.append(np.zeros(n_images), [1])
+
+        return np.linalg.lstsq(pi_mat_a, pi_vec_b, rcond=None)[0]

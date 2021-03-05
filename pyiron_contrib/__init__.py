@@ -25,6 +25,7 @@ JOB_CLASS_DICT['ProtocolVacancyTILDParallel'] = 'pyiron_contrib.protocol.compoun
 JOB_CLASS_DICT['ProtocolVacancyFormation'] = 'pyiron_contrib.protocol.compound.thermodynamic_integration'
 JOB_CLASS_DICT['ProtocolFTSEvolution'] = 'pyiron_contrib.protocol.compound.finite_temperature_string'
 JOB_CLASS_DICT['ProtocolFTSEvolutionParallel'] = 'pyiron_contrib.protocol.compound.finite_temperature_string'
+JOB_CLASS_DICT['ProtocolFTSMilestoningParallel'] = 'pyiron_contrib.protocol.compound.finite_temperature_string'
 JOB_CLASS_DICT['ImageJob'] = 'pyiron_contrib.image.job'
 JOB_CLASS_DICT['LangevinAse'] = 'pyiron_contrib.atomistic.interactive.langevin'
 JOB_CLASS_DICT['Mixer'] = 'pyiron_contrib.atomistic.interactive.mixer'

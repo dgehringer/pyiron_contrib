@@ -128,6 +128,25 @@ class Zeros(PrimitiveVertex):
         }
 
 
+class Difference(PrimitiveVertex):
+    """
+    Calculate the difference between 2 integer input values.
+    Input attributes:
+        a (int): Input 1.
+        b (int): Input 2.
+    Output attributes:
+        diff (int): The difference between a and b
+    """
+
+    def command(self, a, b):
+        if isinstance(a, int) and isinstance(b, int):
+            return {
+                'diff': a - b
+            }
+        else:
+            raise TypeError('´a´ and ´b´ must be integer values')
+
+
 class DeleteAtom(PrimitiveVertex):
     """
     Given a structure, deletes one of the atoms.

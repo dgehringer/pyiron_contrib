@@ -9,12 +9,12 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 from pyiron_contrib.protocol.generic import CompoundVertex, Protocol
-from pyiron_contrib.protocol.primitive.one_state import CreateJob, Counter, CutoffDistance, ExternalHamiltonian, \
-    InitialPositions, RandomVelocity, SphereReflectionPerAtom, VerletPositionUpdate, \
+from pyiron_contrib.protocol.primitive.one_state import CreateJob, Counter, CutoffDistance, Difference, \
+    ExternalHamiltonian, InitialPositions, RandomVelocity, SphereReflectionPerAtom, VerletPositionUpdate, \
     VerletVelocityUpdate, Zeros
 from pyiron_contrib.protocol.primitive.two_state import AnyVertex, IsGEq, ModIsZero
 from pyiron_contrib.protocol.primitive.fts_vertices import CentroidsRunningAverageMix, CentroidsReparameterization, \
-    CentroidsSmoothing, CheckConvergence, PositionsRunningAverage, StringRecenter, StringReflect
+    CentroidsSmoothing, CheckConvergence, PositionsRunningAverage, StringRecenter, StringReflect, MilestonePostProcess
 from pyiron_contrib.protocol.list import SerialList, ParallelList
 from pyiron_contrib.protocol.utils import Pointer
 
@@ -80,7 +80,9 @@ class FTSEvolution(CompoundVertex):
         tolerance (float): The value of std below which the string is considered to be converged (Default is 0.001.)
         anchor_element (int): The centroid number to use as the reference to compute the barrier (Default is 0.)
         use_minima (bool): Whether to use the minima of the energies to compute the barrier (Default is
-                False, use the 0th value.)
+            False, use the 0th value.)
+        store_reflections (bool): If True, stores the reflections matrices (Default for string evolution is False,
+            do not store the reflections matrix)
 
     Output attributes:
         energy_pot (list[float]): Total potential energy of the system in eV.
@@ -112,11 +114,17 @@ class FTSEvolution(CompoundVertex):
         id_.tolerance = 0.001
         id_.anchor_element = 0
         id_.use_minima = False
+        id_.store_reflections = False
         id_._divisor = 1
         id_._total_steps = 0
         id_._project_path = None
         id_._job_name = None
         id_._previous_centroid_positions = None
+        id_._image_number = None
+        id_._tracker_list = None
+        id_._reflections_matrix = None
+        id_._edge_reflections_matrix = None
+        id_._edge_time_matrix = None
 
     def define_vertices(self):
         # Graph components
@@ -493,6 +501,8 @@ class _ConstrainedMD(CompoundVertex):
         # reflect_string
         g.reflect_string.input.default.previous_positions = ip.positions
         g.reflect_string.input.default.previous_velocities = ip.velocities
+        g.reflect_string.input.default.total_steps = ip.total_steps
+        g.reflect_string.input.default.thermalization_steps = ip.thermalization_steps
 
         g.reflect_string.input.all_centroid_positions = ip.all_centroid_positions
         g.reflect_string.input.centroid_positions = ip.centroid_positions
@@ -501,6 +511,17 @@ class _ConstrainedMD(CompoundVertex):
         g.reflect_string.input.previous_positions = gp.reflect_atoms.output.positions[-1]
         g.reflect_string.input.previous_velocities = gp.verlet_velocities.output.velocities[-1]
         g.reflect_string.input.structure = ip.structure
+        g.reflect_string.input.store_reflections = ip.store_reflections
+        g.reflect_string.input.default.image_number = ip.image_number
+        g.reflect_string.input.default.tracker_list = ip.tracker_list
+        g.reflect_string.input.default.reflections_matrix = ip.reflections_matrix
+        g.reflect_string.input.default.edge_reflections_matrix = ip.edge_reflections_matrix
+        g.reflect_string.input.default.edge_time_matrix = ip.edge_time_matrix
+        g.reflect_string.input.image_number = gp.reflect_string.output.image_number[-1]
+        g.reflect_string.input.tracker_list = gp.reflect_string.output.tracker_list[-1]
+        g.reflect_string.input.reflections_matrix = gp.reflect_string.output.reflections_matrix[-1]
+        g.reflect_string.input.edge_reflections_matrix = gp.reflect_string.output.edge_reflections_matrix[-1]
+        g.reflect_string.input.edge_time_matrix = gp.reflect_string.output.edge_time_matrix[-1]
 
         # reflect_atoms
         g.reflect_atoms.input.default.previous_positions = ip.positions
@@ -548,15 +569,32 @@ class _ConstrainedMD(CompoundVertex):
 
     def get_output(self):
         gp = Pointer(self.graph)
-        return {
-            'positions': ~gp.reflect_atoms.output.positions[-1],
-            'velocities': ~gp.verlet_velocities.output.velocities[-1],
-            'forces': ~gp.calc_static.output.forces[-1],
-            'running_average_positions': ~gp.running_average_pos.output.running_average_positions[-1],
-            'divisor': ~gp.running_average_pos.output.divisor[-1],
-            'total_steps': ~gp.running_average_pos.output.total_steps[-1],
-            'clock': ~gp.clock.output.n_counts[-1]
-        }
+        ip = Pointer(self.input)
+        if ~ip.store_reflections:
+            return {
+                'positions': ~gp.reflect_atoms.output.positions[-1],
+                'velocities': ~gp.verlet_velocities.output.velocities[-1],
+                'forces': ~gp.calc_static.output.forces[-1],
+                'running_average_positions': ~gp.running_average_pos.output.running_average_positions[-1],
+                'divisor': ~gp.running_average_pos.output.divisor[-1],
+                'total_steps': ~gp.running_average_pos.output.total_steps[-1],
+                'clock': ~gp.clock.output.n_counts[-1],
+                'image_number': ~gp.reflect_string.output.image_number[-1],
+                'tracker_list': ~gp.reflect_string.output.tracker_list[-1],
+                'reflections_matrix': ~gp.reflect_string.output.reflections_matrix[-1],
+                'edge_reflections_matrix': ~gp.reflect_string.output.edge_reflections_matrix[-1],
+                'edge_time_matrix': ~gp.reflect_string.output.edge_time_matrix[-1]
+            }
+        else:
+            return {
+                'positions': ~gp.reflect_atoms.output.positions[-1],
+                'velocities': ~gp.verlet_velocities.output.velocities[-1],
+                'forces': ~gp.calc_static.output.forces[-1],
+                'running_average_positions': ~gp.running_average_pos.output.running_average_positions[-1],
+                'divisor': ~gp.running_average_pos.output.divisor[-1],
+                'total_steps': ~gp.running_average_pos.output.total_steps[-1],
+                'clock': ~gp.clock.output.n_counts[-1]
+            }
 
 
 class FTSEvolutionParallel(FTSEvolution):
@@ -693,7 +731,13 @@ class FTSEvolutionParallel(FTSEvolution):
         g.constrained_evo.broadcast.default.centroid_positions = gp.initial_positions.output.initial_positions[-1]
 
         g.constrained_evo.direct.all_centroid_positions = gp.reparameterize.output.all_centroids_positions[-1]
+        g.constrained_evo.direct.store_reflections = ip.store_reflections
         g.constrained_evo.broadcast.centroid_positions = gp.reparameterize.output.all_centroids_positions[-1]
+        g.constrained_evo.direct.default.image_number = ip._image_number
+        g.constrained_evo.direct.default.tracker_list = ip._tracker_list
+        g.constrained_evo.direct.default.reflections_matrix = ip._reflections_matrix
+        g.constrained_evo.direct.default.edge_reflections_matrix = ip._edge_reflections_matrix
+        g.constrained_evo.direct.default.edge_time_matrix = ip._edge_time_matrix
 
         # constrained_evolution - reflect_atoms
         g.constrained_evo.direct.default.total_steps = ip._total_steps
@@ -801,4 +845,188 @@ class FTSEvolutionParallel(FTSEvolution):
 
 
 class ProtocolFTSEvolutionParallel(Protocol, FTSEvolutionParallel):
+    pass
+
+
+class FTSMilestoningParallel(FTSEvolution):
+    """
+    Calculates the jump frequencies of each centroid to the final centroid, also returns the free energies of each
+        Centroid.
+
+    Input attributes:
+      sleep_time (float): A delay in seconds for database access of results. For sqlite, a non-zero delay maybe
+            required. (Default is 0 seconds, no delay.)
+
+    For inherited input and output attributes, refer the `FTSEvolution` protocol.
+    """
+
+    def __init__(self, **kwargs):
+        super(FTSMilestoningParallel, self).__init__(**kwargs)
+
+        id_ = self.input.default
+        # Default values
+        # The remainder of the default values are inherited from HarmonicTILD
+        id_.sleep_time = 0  # A delay for database access of results. For sqlite, a non-zero delay maybe required.
+        id_.store_reflections = True
+
+    def define_vertices(self):
+        # Graph components
+        g = self.graph
+        ip = Pointer(self.input)
+        g.centroid_positions = InitialPositions()
+        g.initial_forces = Zeros()
+        g.initial_velocities = SerialList(RandomVelocity)
+        g.cutoff = CutoffDistance()
+        g.check_steps = IsGEq()
+        g.create_centroids = SerialList(CreateJob)
+        g.constrained_evo = ParallelList(_ConstrainedMD, sleep_time=ip.sleep_time)
+        g.diff = Difference()
+        g.clock = Counter()
+        g.milestone_post = MilestonePostProcess()
+
+    def define_execution_flow(self):
+        # Execution flow
+        g = self.graph
+        g.make_pipeline(
+            g.centroid_positions,
+            g.initial_forces,
+            g.initial_velocities,
+            g.cutoff,
+            g.check_steps, 'false',
+            g.create_centroids,
+            g.diff,
+            g.constrained_evo,
+            g.clock,
+            g.check_steps, 'true',
+            g.milestone_post
+        )
+        g.starting_vertex = g.centroid_positions
+        g.restarting_vertex = g.check_steps
+
+    def define_information_flow(self):
+        # Data flow
+        g = self.graph
+        gp = Pointer(self.graph)
+        ip = Pointer(self.input)
+
+        # centroid_positions
+        g.centroid_positions.input.structure_initial = ip.structure_initial
+        g.centroid_positions.input.structure_final = ip.structure_final
+        g.centroid_positions.input.initial_positions = ip.initial_positions
+        g.centroid_positions.input.n_images = ip.n_images
+
+        # initial_forces
+        g.initial_forces.input.shape = ip.structure_initial.positions.shape
+
+        # initial_velocities
+        g.initial_velocities.input.n_children = ip.n_images
+        g.initial_velocities.direct.temperature = ip.temperature
+        g.initial_velocities.direct.masses = ip.structure_initial.get_masses
+        g.initial_velocities.direct.overheat_fraction = ip.overheat_fraction
+
+        # cutoff
+        g.cutoff.input.structure = ip.structure_initial
+        g.cutoff.input.cutoff_factor = ip.cutoff_factor
+
+        # check_steps
+        g.check_steps.input.target = gp.clock.output.n_counts[-1]
+        g.check_steps.input.threshold = ip.n_steps
+
+        # create_centroids
+        g.create_centroids.input.n_children = ip.n_images
+        g.create_centroids.direct.ref_job_full_path = ip.ref_job_full_path
+        g.create_centroids.direct.structure = ip.structure_initial
+
+        # diff
+        g.diff.input.a = ip.n_steps
+        g.diff.input.default.b = ip._total_steps
+        g.diff.input.b = gp.constrained_evo.output.total_steps[-1][-1]
+
+        # constrained_evolution - initiailze
+        g.constrained_evo.input.n_children = ip.n_images
+
+        # constrained_evolution - verlet_positions
+        g.constrained_evo.direct.structure = ip.structure_initial
+        g.constrained_evo.direct.time_step = ip.time_step
+        g.constrained_evo.direct.temperature = ip.temperature
+        g.constrained_evo.direct.temperature_damping_timescale = ip.temperature_damping_timescale
+
+        g.constrained_evo.broadcast.default.positions = gp.centroid_positions.output.initial_positions[-1]
+        g.constrained_evo.broadcast.default.velocities = gp.initial_velocities.output.velocities[-1]
+        g.constrained_evo.direct.default.forces = gp.initial_forces.output.zeros[-1]
+
+        g.constrained_evo.broadcast.positions = gp.constrained_evo.output.positions[-1]
+        g.constrained_evo.broadcast.velocities = gp.constrained_evo.output.velocities[-1]
+        g.constrained_evo.broadcast.forces = gp.constrained_evo.output.forces[-1]
+
+        # constrained_evolution - reflect_string
+        g.constrained_evo.direct.default.all_centroid_positions = gp.centroid_positions.output.initial_positions[-1]
+        g.constrained_evo.direct.default.store_reflections = ip.store_reflections
+        g.constrained_evo.broadcast.default.centroid_positions = gp.centroid_positions.output.initial_positions[-1]
+        g.constrained_evo.direct.default.image_number = ip._image_number
+        g.constrained_evo.direct.default.tracker_list = ip._tracker_list
+        g.constrained_evo.direct.default.reflections_matrix = ip._reflections_matrix
+        g.constrained_evo.direct.default.edge_reflections_matrix = ip._edge_reflections_matrix
+        g.constrained_evo.direct.default.edge_time_matrix = ip._edge_time_matrix
+
+        g.constrained_evo.broadcast.image_number = gp.constrained_evo.output.image_number[-1]
+        g.constrained_evo.broadcast.tracker_list = gp.constrained_evo.output.tracker_list[-1]
+        g.constrained_evo.broadcast.reflections_matrix = gp.constrained_evo.output.reflections_matrix[-1]
+        g.constrained_evo.broadcast.edge_reflections_matrix = gp.constrained_evo.output.edge_reflections_matrix[-1]
+        g.constrained_evo.broadcast.edge_time_matrix = gp.constrained_evo.output.edge_time_matrix[-1]
+
+        # constrained_evolution - reflect_atoms
+        g.constrained_evo.direct.default.total_steps = ip._total_steps
+        g.constrained_evo.broadcast.total_steps = gp.constrained_evo.output.total_steps[-1]
+        g.constrained_evo.direct.cutoff_distance = gp.cutoff.output.cutoff_distance[-1]
+
+        # constrained_evolution - calc_static
+        g.constrained_evo.broadcast.project_path = gp.create_centroids.output.project_path[-1]
+        g.constrained_evo.broadcast.job_name = gp.create_centroids.output.job_names[-1]
+
+        # constrained_evolution - verlet_velocities
+        # takes inputs already specified in verlet_positions
+
+        # constrained_evolution - running_average_positions
+        g.constrained_evo.direct.default.thermalization_steps = ip.thermalization_steps
+        g.constrained_evo.direct.default.divisor = ip._divisor
+        g.constrained_evo.broadcast.default.running_average_positions = \
+            gp.centroid_positions.output.initial_positions[-1]
+
+        g.constrained_evo.broadcast.divisor = gp.constrained_evo.output.divisor[-1]
+        g.constrained_evo.broadcast.running_average_positions = \
+            gp.constrained_evo.output.running_average_positions[-1]
+
+        # constrained_evolution - clock
+        g.constrained_evo.direct.n_steps = gp.diff.output.diff[-1]
+
+        # clock
+        g.clock.input.add_counts = gp.diff.output.diff[-1]
+
+        # milestone_post
+        g.milestone_post.input.time_step = ip.time_step
+        g.milestone_post.input.reflections_matrix = gp.constrained_evo.output.reflections_matrix[-1]
+        g.milestone_post.input.edge_reflections_matrix = gp.constrained_evo.output.edge_reflections_matrix[-1]
+        g.milestone_post.input.edge_time_matrix = gp.constrained_evo.output.edge_time_matrix[-1]
+        g.milestone_post.input.n_images = ip.n_images
+        g.milestone_post.input.temperature = ip.temperature
+
+        self.set_graph_archive_clock(gp.clock.output.n_counts[-1])
+
+    def get_output(self):
+        gp = Pointer(self.graph)
+        return {
+            'equilibrium_probability': ~gp.milestone_post.output.equilibrium_probability[-1],
+            'free_energies': ~gp.milestone_post.output.free_energies[-1],
+            'jump_frequencies': ~gp.milestone_post.output.jump_frequencies[-1],
+            'mean_first_passage_times': ~gp.milestone_post.output.mean_first_passage_times[-1],
+            'reflections_matrix': ~gp.milestone_post.output.reflections_matrix[-1],
+            'edge_reflections_matrix': ~gp.milestone_post.output.edge_reflections_matrix[-1],
+            'edge_time_matrix': ~gp.milestone_post.output.edge_time_matrix[-1],
+            'total_steps': ~gp.constrained_evo.output.total_steps[-1],
+            'running_average_positions': ~gp.constrained_evo.output.running_average_positions[-1]
+        }
+
+
+class ProtocolFTSMilestoningParallel(Protocol, FTSMilestoningParallel):
     pass
