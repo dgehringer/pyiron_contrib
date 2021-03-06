@@ -199,6 +199,8 @@ class StringReflect(_StringDistances):
                     tracker[1] = n_j  # Set new N_j
                     edge_reflections_matrix[image_number][tracker[0], tracker[1]] += 1
                     # End reflection tracking
+
+                tracker_list[image_number] = tracker
         else:
             raise ValueError
 
