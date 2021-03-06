@@ -606,7 +606,7 @@ class MilestonePostProcess(PrimitiveVertex):
 
         summation = 0
         mean_first_passage_times = [t_n[summation]]
-        for i in np.arange(1, len(t_n)):
+        for i in np.arange(2, len(t_n)):
             summation += i
             if summation < len(t_n):
                 mean_first_passage_times.append(t_n[summation])
