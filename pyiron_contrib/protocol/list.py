@@ -7,6 +7,8 @@ from pyiron_contrib.protocol.generic import Vertex, PrimitiveVertex, CompoundVer
 from pyiron_contrib.protocol.utils import InputDictionary, Pointer
 import numpy as np
 import time
+import os
+import psutil
 from abc import abstractmethod
 from multiprocessing import Process, Manager
 from pyiron.vasp.interactive import VaspInteractive
@@ -162,12 +164,21 @@ class ParallelList(ListVertex):
         super(ParallelList, self).__init__(child_type)
         self.sleep_time = sleep_time
         self.count = 0
+        self.runtime_list = None
+        self.memory_list = None
         self.all_child_output = Manager().dict()
 
     def command(self, n_children):
         """This controls how the commands are run and is about logistics."""
         if self.children is None:
             self._initialize(n_children)
+
+        if self.count == 0:
+            self.runtime_list = []
+            self.memory_list = []
+
+        pid = os.getpid()
+        py = psutil.Process(pid)
 
         self.count += 1
 
@@ -207,6 +218,10 @@ class ParallelList(ListVertex):
             output_data = None
 
         stop_time = time.time()
+        self.runtime_list.append(stop_time - start_time)
+        self.memory_list.append(py.memory_info()[0]/2.**30)
+        output_data['runtime_list'] = self.runtime_list
+        output_data['memory_list'] = self.memory_list
         print('Sample no. {} collected in {} seconds'.format(self.count, stop_time - start_time))
 
         return output_data

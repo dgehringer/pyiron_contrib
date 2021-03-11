@@ -5,6 +5,7 @@
 from __future__ import print_function
 
 from pyiron_contrib.protocol.generic import CompoundVertex, Protocol
+from pyiron_contrib.protocol.list import SerialList, ParallelList
 from pyiron_contrib.protocol.primitive.one_state import BerendsenBarostat, Counter, CutoffDistance, \
     ExternalHamiltonian, HarmonicHamiltonian, RandomVelocity, SphereReflection, VerletPositionUpdate, \
     VerletVelocityUpdate, Zeros
@@ -503,4 +504,232 @@ class HarmonicMD(CompoundVertex):
 
 
 class ProtocolHarmonicMD(Protocol, HarmonicMD):
+    pass
+
+
+class HarmonicMD2(CompoundVertex):
+    """
+    Runs molecular dynamics, but treats the atoms in the structure as harmonic oscillators. Calculates the forces
+        on each atom, and the total potential energy of the structure. If the spring constant is specified, the
+        atoms act as Einstein atoms (independent of each other). If the Hessian / force constant matrix is
+        specified, the atoms act as Debye atoms.
+
+    Input attributes:
+        ref_job_full_path (str): Path to the pyiron job to use for evaluating forces and energies.
+        structure (Atoms): The structure evolve.
+        temperature (float): Temperature to run at in K.
+        n_steps (int): How many MD steps to run for. (Default is 100.)
+        temperature_damping_timescale (float): Langevin thermostat timescale in fs. (Default is None, which runs NVE.)
+        time_step (float): MD time step in fs. (Default is 1.)
+        overheat_fraction (float): The fraction by which to overheat the initial velocities. This can be useful for
+            more quickly equilibrating a system whose initial structure is its fully relaxed positions -- in which
+            case equipartition of energy tells us that the kinetic energy should be initialized to double the
+            desired value. (Default is 2.0, assume energy equipartition is a good idea.)
+        spring_constant (float): A single spring / force constant that is used to compute the restoring forces
+            on each atom. (Default is 1.)
+        force_constants (NxN matrix): The Hessian matrix, obtained from, for ex. Phonopy. (Default is None, treat
+            the atoms as independent harmonic oscillators (Einstein atoms.).)
+
+    Output attributes:
+        energy_pot (float): Total potential energy of the system in eV.
+        energy_kin (float): Total kinetic energy of the system in eV.
+        positions (numpy.ndarray): Atomic positions in angstroms.
+        velocities (numpy.ndarray): Atomic velocities in angstroms/fs.
+        forces (numpy.ndarray): Atomic forces in eV/angstrom. Note: These are the potential gradient forces; thermostat
+            forces (if any) are not saved.
+    """
+
+    def __init__(self, **kwargs):
+        super(HarmonicMD2, self).__init__(**kwargs)
+
+    def define_vertices(self):
+        # Graph components
+        g = self.graph
+        g.check_steps = IsGEq()
+        g.clock = Counter()
+        g.verlet_positions = VerletPositionUpdate()
+        g.calc_harmonic = HarmonicHamiltonian()
+        g.verlet_velocities = VerletVelocityUpdate()
+
+    def define_execution_flow(self):
+        # Execution flow
+        g = self.graph
+        g.make_pipeline(
+            g.check_steps, 'false',
+            g.verlet_positions,
+            g.calc_harmonic,
+            g.verlet_velocities,
+            g.clock,
+            g.check_steps
+        )
+        g.starting_vertex = g.check_steps
+        g.restarting_vertex = g.check_steps
+
+    def define_information_flow(self):
+        # Data flow
+        g = self.graph
+        gp = Pointer(self.graph)
+        ip = Pointer(self.input)
+
+        # check_steps
+        g.check_steps.input.target = gp.clock.output.n_counts[-1]
+        g.check_steps.input.threshold = ip.n_steps
+
+        # verelt_positions
+        g.verlet_positions.input.default.positions = ip.positions
+        g.verlet_positions.input.default.velocities = ip.velocities
+        g.verlet_positions.input.default.forces = ip.forces
+
+        g.verlet_positions.input.positions = gp.verlet_positions.output.positions[-1]
+        g.verlet_positions.input.velocities = gp.verlet_velocities.output.velocities[-1]
+        g.verlet_positions.input.forces = gp.calc_harmonic.output.forces[-1]
+        g.verlet_positions.input.masses = ip.structure.get_masses
+        g.verlet_positions.input.time_step = ip.time_step
+        g.verlet_positions.input.temperature = ip.temperature
+        g.verlet_positions.input.temperature_damping_timescale = ip.temperature_damping_timescale
+
+        # calc_harmonic
+        g.calc_harmonic.input.spring_constant = ip.spring_constant
+        g.calc_harmonic.input.force_constants = ip.force_constants
+        g.calc_harmonic.input.reference_positions = ip.positions
+        g.calc_harmonic.input.positions = gp.verlet_positions.output.positions[-1]
+        g.calc_harmonic.input.structure = ip.structure
+
+        # verlet_velocities
+        g.verlet_velocities.input.velocities = gp.verlet_positions.output.velocities[-1]
+        g.verlet_velocities.input.forces = gp.calc_harmonic.output.forces[-1]
+        g.verlet_velocities.input.masses = ip.structure.get_masses
+        g.verlet_velocities.input.time_step = ip.time_step
+        g.verlet_velocities.input.temperature = ip.temperature
+        g.verlet_velocities.input.temperature_damping_timescale = ip.temperature_damping_timescale
+
+        self.set_graph_archive_clock(gp.clock.output.n_counts[-1])
+
+    def get_output(self):
+        gp = Pointer(self.graph)
+        return {
+            'energy_pot': ~gp.calc_harmonic.output.energy_pot[-1],
+            'energy_kin': ~gp.verlet_velocities.output.energy_kin[-1],
+            'positions': ~gp.verlet_positions.output.positions[-1],
+            'velocities': ~gp.verlet_velocities.output.velocities[-1],
+            'forces': ~gp.calc_harmonic.output.forces[-1],
+        }
+
+
+class TestProtocol(CompoundVertex):
+    """
+    Calculates the jump frequencies of each centroid to the final centroid, also returns the free energies of each
+        Centroid.
+
+    Input attributes:
+      sleep_time (float): A delay in seconds for database access of results. For sqlite, a non-zero delay maybe
+            required. (Default is 0 seconds, no delay.)
+
+    For inherited input and output attributes, refer the `FTSEvolution` protocol.
+    """
+
+    def __init__(self, **kwargs):
+        super(TestProtocol, self).__init__(**kwargs)
+
+        id_ = self.input.default
+        # Default values
+        # The remainder of the default values are inherited from HarmonicTILD
+        id_.sleep_time = 0  # A delay for database access of results. For sqlite, a non-zero delay maybe required.
+        id_.temperature = None
+        id_.n_steps = 100
+        id_.temperature_damping_timescale = 100.
+        id_.time_step = 1.
+        id_.overheat_fraction = 2
+        id_.spring_constant = None
+        id_.force_constants = None
+
+    def define_vertices(self):
+        # Graph components
+        g = self.graph
+        ip = Pointer(self.input)
+        g.initial_forces = Zeros()
+        g.initial_velocities = SerialList(RandomVelocity)
+        g.check_steps = IsGEq()
+        g.constrained_evo = ParallelList(HarmonicMD2, sleep_time=ip.sleep_time)
+        g.clock = Counter()
+
+    def define_execution_flow(self):
+        # Execution flow
+        g = self.graph
+        g.make_pipeline(
+            g.initial_forces,
+            g.initial_velocities,
+            g.check_steps, 'false',
+            g.constrained_evo,
+            g.clock,
+            g.check_steps
+        )
+        g.starting_vertex = g.initial_forces
+        g.restarting_vertex = g.check_steps
+
+    def define_information_flow(self):
+        # Data flow
+        g = self.graph
+        gp = Pointer(self.graph)
+        ip = Pointer(self.input)
+
+        # initial_forces
+        g.initial_forces.input.shape = ip.structure.positions.shape
+
+        # initial_velocities
+        g.initial_velocities.input.n_children = ip.n_images
+        g.initial_velocities.direct.temperature = ip.temperature
+        g.initial_velocities.direct.masses = ip.structure.get_masses
+        g.initial_velocities.direct.overheat_fraction = ip.overheat_fraction
+
+        # check_steps
+        g.check_steps.input.target = gp.clock.output.n_counts[-1]
+        g.check_steps.input.threshold = ip.n_steps
+
+        # constrained_evolution - initiailze
+        g.constrained_evo.input.n_children = ip.n_images
+
+        # constrained_evolution - verlet_positions
+        g.constrained_evo.direct.structure = ip.structure
+        g.constrained_evo.direct.time_step = ip.time_step
+        g.constrained_evo.direct.temperature = ip.temperature
+        g.constrained_evo.direct.temperature_damping_timescale = ip.temperature_damping_timescale
+
+        g.constrained_evo.direct.default.positions = ip.structure.positions
+        g.constrained_evo.broadcast.default.velocities = gp.initial_velocities.output.velocities[-1]
+        g.constrained_evo.direct.default.forces = gp.initial_forces.output.zeros[-1]
+
+        g.constrained_evo.broadcast.positions = gp.constrained_evo.output.positions[-1]
+        g.constrained_evo.broadcast.velocities = gp.constrained_evo.output.velocities[-1]
+        g.constrained_evo.broadcast.forces = gp.constrained_evo.output.forces[-1]
+
+        # constrained_evolution - calc_harmonic
+        g.constrained_evo.direct.spring_constant = ip.spring_constant
+        g.constrained_evo.direct.force_constants = ip.force_constants
+
+        # constrained_evolution - verlet_velocities
+        # takes inputs already specified in verlet_positions
+
+        # constrained_evolution - clock
+        g.constrained_evo.direct.n_steps = ip.sampling_period
+
+        # clock
+        g.clock.input.add_counts = ip.sampling_period
+
+        self.set_graph_archive_clock(gp.clock.output.n_counts[-1])
+
+    def get_output(self):
+        gp = Pointer(self.graph)
+        return {
+            'energy_pot': ~gp.constrained_evo.output.energy_pot[-1],
+            'energy_kin': ~gp.constrained_evo.output.energy_kin[-1],
+            'positions': ~gp.constrained_evo.output.positions[-1],
+            'velocities': ~gp.constrained_evo.output.velocities[-1],
+            'forces': ~gp.constrained_evo.output.forces[-1],
+            'runtime_list': ~gp.constrained_evo.output.runtime_list[-1],
+            'memory_list': ~gp.constrained_evo.output.memory_list[-1]
+        }
+
+
+class ProtocolTest(Protocol, TestProtocol):
     pass

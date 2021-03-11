@@ -407,7 +407,7 @@ class CompoundVertex(Vertex):
         """
         pass
 
-    def execute(self, parallel=False):
+    def execute(self):
         """Traverse graph until the active vertex is None."""
         # Subscribe graph vertices to the protocol_finished Event
         for vertex_name, vertex in self.graph.vertices.items():
@@ -432,15 +432,12 @@ class CompoundVertex(Vertex):
             self.vertex_processed.fire(self.graph.active_vertex)
             self.graph.step()
         self.graph.active_vertex = self.graph.restarting_vertex
-        if not parallel:
-            self.update_and_archive(self.get_output())
-            self.finish()
+        self.update_and_archive(self.get_output())
 
     def execute_parallel(self, n, all_child_output):
         """How to execute in parallel when there's a list of these vertices together."""
-        self.execute(parallel=True)
+        self.execute()
         all_child_output[n] = self.get_output()
-        self.finish()
 
     def set_graph_archive_clock(self, clock, recursive=False):
         for _, vertex in self.graph.vertices.items():
