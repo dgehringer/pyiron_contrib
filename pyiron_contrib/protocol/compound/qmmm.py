@@ -526,12 +526,15 @@ class PartitionStructure(PrimitiveVertex):
             self.logger.warn(
                 'Your cell is nearly as large as your supercell. Probably you want to expand it a little bit')
 
-        qm_structure.cell = np.identity(3) * np.ptp(bb, axis=1)
+        # in case the bounding box wraps around the mm super-structure bounds
+        # we wrap the qm_structure atoms around the left-lower-corner atom
+        # we get it's id by argmin |r|
+        corner_id = np.argmin(np.linalg.norm(qm_structure.get_scaled_positions(), axis=1))
+        corner = qm_structure.get_scaled_positions()[corner_id, :]
+        qm_structure.wrap(corner)  # wrap the structure around the corner atom
 
-        box_center = tuple(np.dot(np.linalg.inv(superstructure.cell), np.mean(bb, axis=1)))
-        qm_structure.wrap(box_center)
-        # Wrap it to the unit cell
-        qm_structure.positions = np.dot(qm_structure.get_scaled_positions(), qm_structure.cell)
+        qm_structure.cell = np.identity(3) * np.ptp(bb, axis=1)
+        qm_structure.wrap()  # wrap it to the unit cell
 
         return domain_ids, domain_ids_qm, qm_structure
 
