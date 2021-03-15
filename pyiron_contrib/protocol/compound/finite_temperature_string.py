@@ -844,7 +844,7 @@ class FTSEvolutionParallel(FTSEvolution):
         }
 
 
-class FTSEvoPar(Protocol, FTSEvolutionParallel):
+class ProtocolFTSEvolutionParallel(Protocol, FTSEvolutionParallel):
     pass
 
 
