@@ -647,6 +647,7 @@ class Protocol(CompoundVertex, GenericJob):
         super(CompoundVertex, self).run(delete_existing_job=delete_existing_job, repair=repair, debug=debug,
                                         run_mode=run_mode)
         if finish:
+            print('does this')
             self.finish()
 
     def collect_output(self):
