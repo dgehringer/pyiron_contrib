@@ -840,7 +840,9 @@ class FTSEvolutionParallel(FTSEvolution):
             'positions': ~gp.reparameterize.output.all_centroids_positions[-1],
             'forces': ~gp.calc_static_centroids.output.forces[-1],
             'convergence_list': ~gp.check_convergence.output.convergence_list[-1],
-            'total_steps': ~gp.clock.output.n_counts[-1]
+            'total_steps': ~gp.clock.output.n_counts[-1],
+            'runtime_list': ~gp.constrained_evo.output.runtime_list[-1],
+            'memory_list': ~gp.constrained_evo.output.memory_list[-1]
         }
 
 
