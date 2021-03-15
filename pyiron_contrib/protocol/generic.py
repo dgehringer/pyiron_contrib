@@ -409,11 +409,6 @@ class CompoundVertex(Vertex):
 
     def execute(self):
         """Traverse graph until the active vertex is None."""
-        # Subscribe graph vertices to the protocol_finished Event
-        for vertex_name, vertex in self.graph.vertices.items():
-            handler_name = '{}_close_handler'.format(vertex_name)
-            if not self.protocol_finished.has_handler(handler_name):
-                self.protocol_finished += EventHandler(handler_name, vertex.finish)
 
         # Run the graph
         if self.graph.active_vertex is None:
@@ -679,6 +674,14 @@ class Protocol(CompoundVertex, GenericJob):
         if hdf is None:
             hdf = self.project_hdf5
         super(Protocol, self).from_hdf(hdf=hdf, group_name=group_name)
+
+    def finish(self):
+        # Subscribe graph vertices to the protocol_finished Event
+        for vertex_name, vertex in self.graph.vertices.items():
+            handler_name = '{}_close_handler'.format(vertex_name)
+            vertex.finish()
+            if not self.protocol_finished.has_handler(handler_name):
+                self.protocol_finished += EventHandler(handler_name, vertex.finish)
 
 
 class Graph(dict, LoggerMixin):

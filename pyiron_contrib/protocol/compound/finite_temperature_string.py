@@ -624,12 +624,12 @@ class FTSEvolutionParallel(FTSEvolution):
         g = self.graph
         ip = Pointer(self.input)
         g.create_centroids = SerialList(CreateJob)
+        g.create_images = SerialList(CreateJob)
         g.initial_positions = InitialPositions()
         g.initial_forces = Zeros()
         g.initial_velocities = SerialList(RandomVelocity)
         g.cutoff = CutoffDistance()
         g.check_steps = IsGEq()
-        g.create_images = SerialList(CreateJob)
         g.constrained_evo = ParallelList(_ConstrainedMD, sleep_time=ip.sleep_time)
         g.check_thermalized = IsGEq()
         g.mix = CentroidsRunningAverageMix()
@@ -646,12 +646,12 @@ class FTSEvolutionParallel(FTSEvolution):
         g = self.graph
         g.make_pipeline(
             g.create_centroids,
+            g.create_images,
             g.initial_positions,
             g.initial_forces,
             g.initial_velocities,
             g.cutoff,
             g.check_steps, 'false',
-            g.create_images,
             g.constrained_evo,
             g.clock,
             g.check_thermalized, 'true',
@@ -681,6 +681,11 @@ class FTSEvolutionParallel(FTSEvolution):
         g.create_centroids.direct.ref_job_full_path = ip.ref_job_full_path
         g.create_centroids.direct.structure = ip.structure_initial
 
+        # create_images
+        g.create_images.input.n_children = ip.n_images
+        g.create_images.direct.ref_job_full_path = ip.ref_job_full_path
+        g.create_images.direct.structure = ip.structure_initial
+
         # initial_positions
         g.initial_positions.input.structure_initial = ip.structure_initial
         g.initial_positions.input.structure_final = ip.structure_final
@@ -703,11 +708,6 @@ class FTSEvolutionParallel(FTSEvolution):
         # check_steps
         g.check_steps.input.target = gp.clock.output.n_counts[-1]
         g.check_steps.input.threshold = ip.n_steps
-
-        # create_images
-        g.create_images.input.n_children = ip.n_images
-        g.create_images.direct.ref_job_full_path = ip.ref_job_full_path
-        g.create_images.direct.structure = ip.structure_initial
 
         # constrained_evolution - initiailze
         g.constrained_evo.input.n_children = ip.n_images
@@ -844,7 +844,7 @@ class FTSEvolutionParallel(FTSEvolution):
         }
 
 
-class ProtocolFTSEvolutionParallel(Protocol, FTSEvolutionParallel):
+class FTSEvoPar(Protocol, FTSEvolutionParallel):
     pass
 
 
