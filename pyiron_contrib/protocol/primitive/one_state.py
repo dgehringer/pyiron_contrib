@@ -965,8 +965,8 @@ class SphereReflection(PrimitiveVertex):
             }
         else:
             return {
-                'positions': positions,
-                'velocities': velocities,
+                'positions': previous_positions,
+                'velocities': -previous_velocities,
                 'reflected': True,
                 'total_steps': total_steps
             }
