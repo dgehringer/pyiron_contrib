@@ -407,14 +407,13 @@ class CompoundVertex(Vertex):
         """
         pass
 
-    def execute(self, parallel=False):
+    def execute(self):
         """Traverse graph until the active vertex is None."""
-        if not parallel:
-            # Subscribe graph vertices to the protocol_finished Event
-            for vertex_name, vertex in self.graph.vertices.items():
-                handler_name = '{}_close_handler'.format(vertex_name)
-                if not self.protocol_finished.has_handler(handler_name):
-                    self.protocol_finished += EventHandler(handler_name, vertex.finish)
+        # Subscribe graph vertices to the protocol_finished Event
+        for vertex_name, vertex in self.graph.vertices.items():
+            handler_name = '{}_close_handler'.format(vertex_name)
+            if not self.protocol_finished.has_handler(handler_name):
+                self.protocol_finished += EventHandler(handler_name, vertex.finish)
 
         # Run the graph
         if self.graph.active_vertex is None:
@@ -437,7 +436,7 @@ class CompoundVertex(Vertex):
 
     def execute_parallel(self, n, all_child_output):
         """How to execute in parallel when there's a list of these vertices together."""
-        self.execute(parallel=True)
+        self.execute()
         all_child_output[n] = self.get_output()
 
     def set_graph_archive_clock(self, clock, recursive=False):
@@ -633,13 +632,13 @@ class Protocol(CompoundVertex, GenericJob):
 
     def execute(self):
         super(Protocol, self).execute()
-        self.protocol_finished.fire()
 
     def run_static(self):
         """If this CompoundVertex is the highest level, it can be run as a regular pyiron job."""
         self.status.running = True
         self.execute()
         self.status.collect = True  # Assume modal for now
+        self.protocol_finished.fire()
         self.run()  # This is an artifact of inheriting from GenericJob, to get all that run functionality
 
     def run(self, delete_existing_job=False, repair=False, debug=False, run_mode=None, continue_run=False):
