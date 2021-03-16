@@ -10,7 +10,7 @@ from matplotlib.ticker import MaxNLocator
 
 from pyiron_contrib.protocol.generic import CompoundVertex, Protocol
 from pyiron_contrib.protocol.primitive.one_state import CreateJob, Counter, CutoffDistance, Difference, \
-    ExternalHamiltonian, InitialPositions, RandomVelocity, SphereReflectionPerAtom, VerletPositionUpdate, \
+    ExternalHamiltonian, InitialPositions, RandomVelocity, SphereReflection, VerletPositionUpdate, \
     VerletVelocityUpdate, Zeros
 from pyiron_contrib.protocol.primitive.two_state import AnyVertex, IsGEq, ModIsZero
 from pyiron_contrib.protocol.primitive.fts_vertices import CentroidsRunningAverageMix, CentroidsReparameterization, \
@@ -452,7 +452,7 @@ class _ConstrainedMD(CompoundVertex):
         g.check_steps = IsGEq()
         g.verlet_positions = VerletPositionUpdate()
         g.reflect_string = StringReflect()
-        g.reflect_atoms = SphereReflectionPerAtom()
+        g.reflect_atoms = SphereReflection()
         g.calc_static = ExternalHamiltonian()
         g.verlet_velocities = VerletVelocityUpdate()
         g.running_average_pos = PositionsRunningAverage()
