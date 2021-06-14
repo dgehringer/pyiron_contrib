@@ -12,9 +12,9 @@ from scipy.constants import physical_constants
 from pyiron_contrib.protocol.generic import CompoundVertex, Protocol
 from pyiron_contrib.protocol.list import SerialList, ParallelList
 from pyiron_contrib.protocol.utils import Pointer
-from pyiron_contrib.protocol.primitive.one_state import BuildMixingPairs, Counter, \
+from pyiron_contrib.protocol.primitive.one_state import Append, BuildMixingPairs, Counter, \
     CreateSubJobs, ExternalHamiltonian, FEPExponential, RandomVelocity, SphereReflectionPerAtom, TILDPostProcess, \
-    TILDValidate, VerletPositionUpdate, VerletVelocityUpdate, WeightedSum, WelfordOnline, Zeros
+    TILDValidate, VerletPositionUpdate, VerletVelocityUpdate, WeightedSum, WelfordOnline, Zeros, NewFEPExponential
 from pyiron_contrib.protocol.primitive.two_state import AnyVertex, IsGEq, IsLEq, ModIsZero
 
 # Define physical constants that will be used in this script
@@ -57,6 +57,7 @@ class _TILDLambdaEvolution(CompoundVertex):
         g.average_temp = WelfordOnline()
         g.check_sampling_steps = ModIsZero()
         g.addition = WeightedSum()
+        g.append = Append()
         g.average_tild = WelfordOnline()
         g.fep_exp = FEPExponential()
         g.average_fep_exp = WelfordOnline()
@@ -79,6 +80,7 @@ class _TILDLambdaEvolution(CompoundVertex):
             g.check_sampling_steps, "true",
             g.addition,
             g.average_tild,
+            g.append,
             g.fep_exp,
             g.average_fep_exp,
             g.check_steps
@@ -189,6 +191,9 @@ class _TILDLambdaEvolution(CompoundVertex):
         g.average_tild.input.n_samples = gp.average_tild.output.n_samples[-1]
         g.average_tild.input.sample = gp.addition.output.weighted_sum[-1]
 
+        # append
+        g.append.input.quantity = gp.addition.output.weighted_sum[-1]
+
         # fep_exp
         g.fep_exp.input.u_diff = gp.addition.output.weighted_sum[-1]
         g.fep_exp.input.temperature = ip.temperature
@@ -220,7 +225,8 @@ class _TILDLambdaEvolution(CompoundVertex):
             'std_diff': ~gp.average_tild.output.std[-1],
             'fep_exp_mean': ~gp.average_fep_exp.output.mean[-1],
             'fep_exp_std': ~gp.average_fep_exp.output.std[-1],
-            'n_samples': ~gp.average_tild.output.n_samples[-1]
+            'n_samples': ~gp.average_tild.output.n_samples[-1],
+            'energy_pots_list': ~gp.append.output.the_list[-1]
         }
 
 
@@ -338,6 +344,7 @@ class TILDParallel(CompoundVertex):
         g.check_steps = IsGEq()
         g.check_convergence = IsLEq()
         g.run_lambda_points = ParallelList(_TILDLambdaEvolution, sleep_time=ip.sleep_time)
+        g.new_fep = NewFEPExponential()
         g.clock = Counter()
         g.post = TILDPostProcess()
         g.exit = AnyVertex()
@@ -356,6 +363,7 @@ class TILDParallel(CompoundVertex):
             g.check_steps, "false",
             g.check_convergence, "false",
             g.run_lambda_points,
+            g.new_fep,
             g.clock,
             g.post,
             g.exit
@@ -501,6 +509,10 @@ class TILDParallel(CompoundVertex):
 
         # clock
         g.clock.input.add_counts = ip.convergence_check_steps
+
+        # new_fep
+        g.new_fep.input.energy_pots_list = gp.run_lambda_points.output.energy_pots_list[-1]
+        g.new_fep.input.temperature = ip.temperature
 
         # post_processing
         g.post.input.lambda_pairs = gp.build_lambdas.output.lambda_pairs[-1]

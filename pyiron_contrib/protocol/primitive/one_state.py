@@ -1575,3 +1575,69 @@ class NEBPostProcess(PrimitiveVertex):
         return {
             'force_norm': force_norm
         }
+
+
+class Append(PrimitiveVertex):
+    """
+    Append a quantity to a list.
+    """
+
+    def __init__(self, name=None):
+        super(Append, self).__init__(name=name)
+        self.initialized = False
+        self.the_list = None
+
+    def command(self, quantity):
+        if not self.initialized:
+            self.the_list = []
+            self.initialized = True
+        self.the_list.append(quantity)
+        return {
+            'the_list': self.the_list
+        }
+
+
+class NewFEPExponential(PrimitiveVertex):
+    """
+    Append a quantity to a list.
+    """
+
+    def __init__(self, name=None):
+        super(NewFEPExponential, self).__init__(name=name)
+        self.initialized = False
+        self.each_initialized = None
+        self.counts_list = None
+        self.means_list = None
+        self.stds_list = None
+
+    def command(self, energy_pots_list, temperature):
+        if not self.initialized:
+            self.counts_list = np.zeros(len(energy_pots_list) - 1)
+            self.means_list = np.zeros(len(energy_pots_list) - 1)
+            self.stds_list = np.zeros(len(energy_pots_list) - 1)
+            self.initialized = True
+            self.each_initialized = [False] * len(self.counts_list)
+
+        exp_diff_list = []
+        for i, a_list in enumerate(energy_pots_list[1:]):
+            exp_diff_list.append(np.exp(-(np.array(a_list) - np.array(energy_pots_list[i])) / (KB * temperature)))
+
+        for i, each in enumerate(exp_diff_list):
+            if not self.each_initialized[i]:
+                self.means_list[i] = each[0]
+                self.stds_list[i] = 0
+                each = each[1:]
+                self.counts_list[i] += 1
+                self.each_initialized[i] = True
+            for value in each:
+                self.counts_list[i] += 1
+                new_mean, new_std = welford_online(value, self.means_list[i], self.stds_list[i], self.counts_list[i])
+                self.means_list[i] = new_mean
+                self.stds_list[i] = new_std
+
+        return{
+            'means_list': self.means_list,
+            'stds_list': self.stds_list,
+            'counts_list': self.counts_list
+        }
+
