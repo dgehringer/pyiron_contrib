@@ -8,10 +8,12 @@ from pyiron_base.generic.datacontainer import DataContainer
 
 import numpy as np
 from scipy import stats, constants
-import os
-import shutil
-import glob
-from uncertainties import unumpy
+from os.path import abspath, join, isfile
+from os import remove
+from shutil import rmtree
+from glob import glob
+from time import sleep
+from uncertainties.unumpy import uarray, nominal_values, std_devs
 
 KB = constants.physical_constants['Boltzmann constant in eV/K'][0]
 
@@ -49,11 +51,11 @@ class FreeEnergy(AtomisticGenericJob):
         Removes all the child jobs (files AND folders) to save disk space and reduce file count, and only keeps
         the hdf file.
         """
-        for f in glob.glob(os.path.abspath(os.path.join(job.working_directory, '../..')) + '/' + job.job_name + '_*'):
-            if os.path.isfile(f):
-                os.remove(f)
+        for f in glob(abspath(join(job.working_directory, '../..')) + '/' + job.job_name + '_*'):
+            if isfile(f):
+                remove(f)
             else:
-                shutil.rmtree(f)
+                rmtree(f)
 
     def run_npt_md(self, pressure=0., temperature_damping_timescale=100., pressure_damping_timescale=1000.,
                    n_ionic_steps=5e5, n_print=100, time_step=1., langevin=True):
@@ -193,6 +195,7 @@ class FreeEnergy(AtomisticGenericJob):
         tild_job.input.zero_k_energy = zero_k_energy
         tild_job.server.queue = self.server.queue
         tild_job.server.cores = self.server.cores
+        tild_job.server.run_time = self.server.run_time
         tild_job.run()
         self.output.tild_job = tild_job
 
@@ -223,11 +226,11 @@ class FreeEnergy(AtomisticGenericJob):
         """
         if self.output.del_harm_to_eam is None:
             raise ValueError("`get_tild_output()´ needs to be called before `get_G_per_atom()´")
-        del_harm_to_eam = unumpy.uarray(self.output.del_harm_to_eam, self.output.del_harm_to_eam_se)
+        del_harm_to_eam = uarray(self.output.del_harm_to_eam, self.output.del_harm_to_eam_se)
         anharm_fe = self.output.qh_free_energy + del_harm_to_eam + self.output.A_to_G_correction
         anharm_fe_pa = anharm_fe / len(self.output.minimized_structure)
-        self.output.anharm_G = unumpy.nominal_values(anharm_fe_pa)
-        self.output.anharm_G_se = unumpy.std_devs(anharm_fe_pa)
+        self.output.anharm_G = nominal_values(anharm_fe_pa)
+        self.output.anharm_G_se = std_devs(anharm_fe_pa)
 
     def run_static(self):
         """
@@ -242,6 +245,8 @@ class FreeEnergy(AtomisticGenericJob):
                                       sampling_steps=10, convergence_check_steps=500, fe_tol=0.5e-3, time_step=1.,
                                       temperature_damping_timescale=100., overheat_fraction=2., cutoff_factor=0.5,
                                       use_reflection=False, zero_k_energy=0.)
+        while self.output.tild_job.status != "finished":
+            sleep(30)
         self.get_tild_output(plot_integrands=True)
         self.get_G_per_atom()
         print("DONE")
