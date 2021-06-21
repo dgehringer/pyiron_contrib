@@ -252,7 +252,6 @@ class FreeEnergy(AtomisticGenericJob):
             sleep(30)
         self.get_tild_output(plot_integrands=True)
         self.get_G_per_atom()
-        self.to_hdf()
         print("DONE")
 
     def to_hdf(self, hdf=None, group_name=None):
