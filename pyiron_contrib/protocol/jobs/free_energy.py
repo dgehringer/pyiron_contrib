@@ -239,15 +239,12 @@ class FreeEnergy(GenericMaster):
         """
         Run the methods.
         """
-        self.run_npt_md(n_ionic_steps=1000, n_print=1)
+        self.run_npt_md()
         self.get_npt_md_structure()
         self.get_A_to_G_correction()
         self.run_phonopy()
         self.get_phonopy_output()
-        self.run_harmonic_to_eam_tild(n_lambdas=4, lambda_bias=0.5, n_steps=100, thermalization_steps=20,
-                                      sampling_steps=5, convergence_check_steps=50, fe_tol=0.5e-3, time_step=1.,
-                                      temperature_damping_timescale=100., overheat_fraction=2., cutoff_factor=0.5,
-                                      use_reflection=False, zero_k_energy=0.)
+        self.run_harmonic_to_eam_tild()
         while self._tild_job.status != "finished":
             sleep(30)
         self.get_tild_output(plot_integrands=True)
