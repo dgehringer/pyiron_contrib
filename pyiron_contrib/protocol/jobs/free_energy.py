@@ -195,7 +195,10 @@ class FreeEnergy(AtomisticGenericJob):
         tild_job.input.zero_k_energy = zero_k_energy
         tild_job.server.queue = self.server.queue
         tild_job.server.cores = self.server.cores
-        tild_job.server.run_time = self.server.run_time
+        if self.server.run_time is not None:
+            tild_job.server.run_time = self.server.run_time
+        else:
+            tild_job.server.run_time = 43200
         tild_job.run()
         self.output.tild_job = tild_job
 
