@@ -2,18 +2,15 @@
 # Copyright (c) Max-Planck-Institut für Eisenforschung GmbH - Computational Materials Design (CM) Department
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
-from pyiron_atomistics import Project
-import pyiron_contrib
+from pyiron_contrib.protocol.compound.thermodynamic_integration import ProtoTILDPar
 from pyiron_atomistics.atomistics.job.atomistic import AtomisticGenericJob
 from pyiron_base.generic.datacontainer import DataContainer
 
 import numpy as np
 from scipy import stats, constants
-import matplotlib.pyplot as plt
 import os
 import shutil
 import glob
-import time
 from uncertainties import unumpy
 
 KB = constants.physical_constants['Boltzmann constant in eV/K'][0]
@@ -175,7 +172,7 @@ class FreeEnergy(AtomisticGenericJob):
         ref_job_b.potential = self.input.potential
         ref_job_b.save()
         # tild job
-        tild_job = tild_folder.create.job.ProtoTILDPar("tild_job")
+        tild_job = tild_folder.create_job(ProtoTILDPar, "tild_job")
         tild_job.input.temperature = self.input.temperature
         tild_job.input.ref_job_a_full_path = ref_job_a.path
         tild_job.input.ref_job_b_full_path = ref_job_b.path
@@ -208,7 +205,7 @@ class FreeEnergy(AtomisticGenericJob):
         print("Getting free energy between reference and EAM...")
         try:
             tild_job = self.output.tild_job
-            print(tild_job.output.tild_free_energy_mean)
+            hasattr(tild_job.output, 'tild_free_energy_mean')
         except KeyError:
             tild_job = self.project.load(self.output.tild_job.job_name)
         self.output.del_harm_to_eam = tild_job.output.tild_free_energy_mean[-1]
