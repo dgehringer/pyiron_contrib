@@ -191,6 +191,7 @@ class FreeEnergy(AtomisticGenericJob):
         tild_job.input.cutoff_factor = cutoff_factor
         tild_job.input.use_reflection = use_reflection
         tild_job.input.zero_k_energy = zero_k_energy
+        tild_job.server.queue = self.server.queue
         tild_job.server.cores = self.server.cores
         tild_job.run()
         self.output.tild_job = tild_job
