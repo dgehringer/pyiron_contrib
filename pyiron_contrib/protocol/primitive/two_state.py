@@ -13,9 +13,7 @@ Primitive protocols which have two outbound execution edges.
 
 class BoolVertex(PrimitiveVertex):
     """
-    This is a class of commands designed to branch the graph based on a binary check. They do not have
-
-    Attributes
+    This is a class of commands designed to branch the graph based on a binary check. They do not have attributes.
     """
     def __init__(self, name=None):
         super(BoolVertex, self).__init__(name=name)
@@ -28,8 +26,8 @@ class BoolVertex(PrimitiveVertex):
 
 class IsGEq(BoolVertex):
     """
-    Checks if an input value is greater than or equal to a target threshold. Vertex state switches from 'false' to
-    'true' when the target exceeds the threshold.
+    Checks if an input value is greater than or equal to a target threshold. Vertex state switches from "false" to
+    "true" when the target exceeds the threshold.
     Input attributes:
         target (float/int): The value being checked. (Default is numpy infinity.)
         threshold (float/int): What it's being checked against. (Default is zero.)
@@ -48,8 +46,8 @@ class IsGEq(BoolVertex):
 
 class IsLEq(BoolVertex):
     """
-    Checks if an input value is less than or equal to a target threshold. Vertex state switches from 'false' to
-    'true' when the target exceeds the threshold.
+    Checks if an input value is less than or equal to a target threshold. Vertex state switches from "false" to
+    "true" when the target exceeds the threshold.
 
     Input attributes:
         target (float/int): The value being checked. (Default is zero.)
@@ -90,28 +88,27 @@ class AnyVertex(BoolVertex):
     Input attributes:
         vertices (list): The list of vertices.
         print_strings (list): The list of strings to print should the associated vertex be true.
+        step (int): The step at which this vertex is called.
+        n_steps (int): The maximum number of steps.
     """
 
-    def command(self, vertices, print_strings):
+    def command(self, vertex_states, print_strings, step=None, n_steps=None):
         bool_list = []
-        for i in vertices:
-            if isinstance(i, PrimitiveVertex):
-                if i.vertex_state == "true":
-                    bool_list.append(True)
-                else:
-                    bool_list.append(False)
+        for state in vertex_states:
+            if state == "true":
+                bool_list.append(1)
+            elif state == "false":
+                bool_list.append(0)
             else:
-                raise TypeError(str(i) + ' is not an instance of PrimitiveVertex.')
-
-        print_condition = (len(print_strings) == len(vertices))
+                raise NameError("`vertex_states´ can only be `true´ or `false´")
 
         if np.any(bool_list):
-            if bool_list[0]:
-                if print_condition:
-                    print(print_strings[0])
-            elif bool_list[1]:
-                if print_condition:
-                    print(print_strings[1])
+            for i, val in enumerate(bool_list):
+                if val:
+                    print(print_strings[i].format(step))  # this should still run if step is None
             self.vertex_state = "true"
         else:
+            if (step is not None) and (n_steps is not None):
+                if step < n_steps:
+                    print(print_strings[-1].format(step))
             self.vertex_state = "false"

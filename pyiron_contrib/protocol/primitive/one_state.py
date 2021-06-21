@@ -4,8 +4,9 @@
 
 from __future__ import print_function
 
-import numpy as np
 from os.path import split
+import numpy as np
+
 from abc import ABC, abstractmethod
 from uncertainties import unumpy
 from scipy.constants import physical_constants
@@ -15,10 +16,16 @@ from ase.geometry import get_distances
 from pyiron_atomistics import Project
 from pyiron_atomistics.atomistics.job.interactive import GenericInteractive
 from pyiron_atomistics.lammps.lammps import LammpsInteractive
+from pyiron_atomistics.vasp.vasp import VaspInteractive
+from pyiron_atomistics.sphinx.sphinx import SphinxInteractive
+from pyiron_atomistics.thermodynamics.hessian import HessianJob
+from pyiron_contrib.protocol.jobs.decoupled_oscillators import DecoupledOscillators
 from pyiron_contrib.protocol.generic import PrimitiveVertex
 from pyiron_contrib.protocol.utils import Pointer
 from pyiron_contrib.protocol.utils import ensure_iterable
 from pyiron_contrib.protocol.math import welford_online
+
+import warnings
 
 KB = physical_constants['Boltzmann constant in eV/K'][0]
 EV_TO_U_ANGSQ_PER_FSSQ = 0.00964853322
@@ -57,24 +64,36 @@ class BuildMixingPairs(PrimitiveVertex):
 
     def __init__(self, name=None):
         super(BuildMixingPairs, self).__init__(name=name)
-        self.input.default.n_lambdas = 5
-        self.input.default.custom_lambdas = None
+        self.input.default.n_lambdas = 3
+        self.input.default.lambda_bias = 0.5
 
-    def command(self, n_lambdas, custom_lambdas):
-
-        if custom_lambdas is not None:
-            lambdas = np.array(custom_lambdas)
-        else:
-            lambdas = np.linspace(0, 1, num=n_lambdas)
-
+    def command(self, n_lambdas, lambda_bias):
+        lambdas = self._generate_lambdas(n_lambdas=n_lambdas, bias=lambda_bias)
         delta_lambdas = np.gradient(lambdas)
         delta_lambdas[0] = delta_lambdas[0] / 2
         delta_lambdas[-1] = delta_lambdas[-1] / 2
-
         return {
-                'lambda_pairs': np.array([lambdas, 1 - lambdas]).T,
-                'delta_lambdas': delta_lambdas
-            }
+            'lambda_pairs': np.array([lambdas, 1 - lambdas]).T,
+            'delta_lambdas': delta_lambdas
+        }
+
+    @staticmethod
+    def _generate_lambdas(n_lambdas, bias):
+        """
+        A function to generate N points between 0 and 1, with a left, equidistant and right bias.
+        bias = 0 makes the points fully left biased. The amount of left bias can be controlled by varying it between 0 and
+            0.49.
+        bias = 0.5 keeps the points equidistant.
+        bias = 1 makes the points fully right biased. The amount of right bias can be controlled by varying it between 0.51
+            and 1.
+        """
+        factor = bias + 0.5
+        lambdas = [0, 1]
+        for _ in np.arange(n_lambdas - 2):
+            lambdas.append(lambdas[-1] + (lambdas[-1] - lambdas[-2]) / factor)
+        lambdas = np.asarray(lambdas)
+        lambdas /= lambdas[-1]
+        return lambdas
 
 
 class Counter(PrimitiveVertex):
@@ -92,9 +111,9 @@ class Counter(PrimitiveVertex):
         self.output.n_counts = [0]
 
     def command(self, add_counts):
-        if add_counts > 0:
+        if add_counts > 0:  # increment from a value
             count = self.output.n_counts[-1] + add_counts
-        else:
+        else:  # regular increment
             count = self.output.n_counts[-1] + 1
         return {
             'n_counts': count
@@ -128,26 +147,34 @@ class Zeros(PrimitiveVertex):
         }
 
 
-class DeleteAtom(PrimitiveVertex):
+class DeleteAtoms(PrimitiveVertex):
     """
-    Given a structure, deletes one of the atoms.
+    Given a structure, deletes atoms whose indices are in the atom_id list.
     Input attributes:
-        structure (Atoms): The structure to delete an atom of.
-        atom_id (int): Which atom to delete. (Default is 0, the 0th atom.)
+        structure (Atoms): The structure to delete atoms of.
+        atom_id_list (list(int)): Which atoms to delete. (Default is 0, the 0th atom.)
     Output attributes:
         structure (Atoms): The new, modified structure.
         mask (numpy.ndarray): The integer ids shared by both the old and new structure.
     """
 
     def __init__(self, name=None):
-        super(DeleteAtom, self).__init__(name=name)
-        self.input.default.atom_id = 0
+        super(DeleteAtoms, self).__init__(name=name)
+        self.input.default.atoms_id_list = [0]
 
-    def command(self, structure, atom_id):
+    def command(self, structure, atoms_id_list):
+        # check if atoms_id_list is a list of integers
+        if isinstance(atoms_id_list, list):
+            if not all(isinstance(atom_id, int) for atom_id in atoms_id_list):
+                raise ValueError("Atom ids should be integers")
+        else:
+            raise ValueError("atoms_id_list should be a list of integers")
+
         vacancy_structure = structure.copy()
-        vacancy_structure.pop(atom_id)
-        mask = np.delete(np.arange(len(structure)).astype(int), atom_id)
-
+        for i, atom_id in enumerate(np.sort(atoms_id_list)):
+            new_atom_id = atom_id - i
+            vacancy_structure.pop(int(new_atom_id))
+        mask = np.delete(np.arange(len(structure)).astype(int), atoms_id_list)
         return {
             'structure': vacancy_structure,
             'mask': mask
@@ -156,128 +183,97 @@ class DeleteAtom(PrimitiveVertex):
 
 class ExternalHamiltonian(PrimitiveVertex):
     """
-    Manages calls to an external interpreter (e.g. Lammps, Vasp, Sphinx...) to produce energies, forces,
+    Manages calls to an external interpreter (ex. Lammps, Vasp, Sphinx...) to produce energies, forces,
         and possibly other properties. The collected output can be expanded beyond forces and energies
         (e.g. to magnetic properties or whatever else the interpreting code produces) by modifying the
         `interesting_keys` in the input. The property must have a corresponding interactive getter for
         this property.
+    Note: The jobs for the external interpreters MUST be initialized and saved outside of this vertex, using the
+        'CreateSubJobs' vertex. This vertex ONLY runs the job to produce properties, given positions and cell.
     Input attributes:
-        ref_job_full_path (string): The full path to the hdf5 file of the job to use as a reference template.
-            (Default is None.)
-        project_path (string): The path of the project. To be specified ONLY when the jobs are already
-            initialized outside of this vertex. If `project_path` is specified, `ref_job_full_path` must
-            be set to None. (Default is None.)
+        job_project_path (string): The project path of the job. (Default is None.)
         job_name (string): The name of the job. This is specified only when the jobs are already
             initialized outside of this vertex. (Default is None.)
-        structure (Atoms): The structure for initializing the external Hamiltonian. Overwrites the reference
-            job structure when provided. (Default is None, the reference job needs to have its structure set.)
-        positions (numpy.ndarray): New positions to evaluate. Shape must match the shape of the structure.
-            (Default is None, only necessary if positions are being updated.)
-        cell (numpy.ndarray): The cell, if not same as that in the specified structure. (Default is None,
-            same cell as in the structure.)
+        positions (numpy.ndarray): New positions at which to evaluate properties. Shape must match the shape of the
+            job's structure. (Default is None, only necessary if positions are being updated.)
+        cell (numpy.ndarray): The cell, if not same as that in the specified job's structure. (Default is None,
+            same cell as in the job's structure.)
         interesting_keys (list[str]): String codes for output properties of the underlying job to collect.
-            (Default is ['positions', 'forces', 'energy_pot', 'pressures', 'volume', 'cell'].)
+            (Default is ['forces', 'energy_pot'].)
     Output attributes:
         keys (list/numpy.ndarray): The output corresponding to the interesting keys.
     """
 
     def __init__(self, name=None):
         super(ExternalHamiltonian, self).__init__(name=name)
-        self._fast_lammps_mode = True  # Set to false only to intentionally be slow for comparison purposes
+        self._fast_lammps_mode = True
         self._job_project_path = None
-        self._job = None
         self._job_name = None
+        self._job = None
         id_ = self.input.default
-        id_.ref_job_full_path = None
-        id_.project_path = None
+        id_.job_project_path = None
         id_.job_name = None
-        id_.structure = None
         id_.positions = None
         id_.cell = None
-        id_.interesting_keys = ['positions', 'forces', 'energy_pot', 'pressures', 'volume', 'cell']
+        id_.interesting_keys = ['forces', 'energy_pot', 'pressures', 'volume']
 
-    def command(self, ref_job_full_path, project_path, job_name, structure, positions, cell, interesting_keys):
+    def command(self, job_project_path, job_name, positions, cell, interesting_keys):
 
-        if self._job_project_path is None:
-            if project_path is None and ref_job_full_path is not None:
-                self._job_project_path, self._job_name = self._initialize(self.get_graph_location(),
-                                                                          ref_job_full_path,
-                                                                          structure,
-                                                                          self._fast_lammps_mode
-                                                                          )
-            elif project_path is not None and ref_job_full_path is None:
-                self._job_project_path = project_path
-                self._job_name = job_name
-            else:
-                raise AttributeError('Please specify valid project path OR ref_job_full_path, but not both!')
+        self._job_project_path = job_project_path
+        self._job_name = job_name
 
+        # reload happens only if a CompoundVertex with this Vertex is run in a loop. Within the CompoundVertex
+        # itself, there is no need for a reload, once self._job is assigned a job.
         if self._job is None:
-            self._reload()
-        elif not self._job.interactive_is_activated():
-            self._job.status.running = True
-            self._job.interactive_open()
-            self._job.interactive_initialize_interface()
+            self._job_reload()
 
+        # if the job is of Lammps type, use the interactive functionality
         if isinstance(self._job, LammpsInteractive) and self._fast_lammps_mode:
             if positions is not None:
                 self._job.interactive_positions_setter(positions)
             if cell is not None:
                 self._job.interactive_cells_setter(cell)
             self._job._interactive_lib_command(self._job._interactive_run_command)
+        # otherwise,
         elif isinstance(self._job, GenericInteractive):
-            # DFT codes are slow enough that we can run them the regular way and not care
-            # Also we might intentionally run Lammps slowly for comparison purposes
-            if positions is not None:
-                self._job.structure.positions = positions
-            if cell is not None:
-                self._job.structure.cell = cell
-            self._job.calc_static()
-            self._job.run()
+            # if the job is of type DecoupledOscillators,
+            if isinstance(self._job, DecoupledOscillators):
+                self._job.positions = positions
+                self._job.run_if_interactive()
+            else:
+                # DFT codes are slow enough that we can run them the regular way and not care
+                # also we might intentionally run Lammps slowly for comparison purposes
+                if positions is not None:
+                    self._job.structure.positions = positions
+                if cell is not None:
+                    self._job.structure.cell = cell
+                # if the job is of type HessianJob,
+                if isinstance(self._job, HessianJob):
+                    self._job.interactive_initialize_interface()
+                    self._job.calculate_forces()
+                    self._job.interactive_collect()
+                else:
+                    self._job.calc_static()
+                    self._job.run()
         else:
-            raise TypeError('Job of class {} is not compatible.'.format(self._job.__class__))
+            if self._job is not None:
+                raise TypeError("Job of class {} is not compatible".format(self._job.__class__))
+            else:
+                raise ValueError("Please make sure that the child jobs are created")
+
+        if isinstance(self._job, VaspInteractive):
+            interesting_keys = ['forces', 'energy_pot']
 
         return {key: self._get_interactive_value(key) for key in interesting_keys}
 
-    @staticmethod
-    def _initialize(graph_location, ref_job_full_path, structure, fast_lammps_mode, name=None):
+    def _job_reload(self):
         """
-        Initialize / create the interactive job and save it.
-        """
-        if name is None:
-            name = graph_location + '_job'
-        project_path, ref_job_path = split(ref_job_full_path)
-        pr = Project(path=project_path)
-        ref_job = pr.load(ref_job_path)
-        job = ref_job.copy_to(
-            project=pr,
-            new_job_name=name,
-            input_only=True,
-            new_database_entry=True
-        )
-        if structure is not None:
-            job.structure = structure
-        if isinstance(job, GenericInteractive):
-            job.interactive_open()
-            if isinstance(job, LammpsInteractive) and fast_lammps_mode:
-                # Note: This might be done by default at some point in LammpsInteractive,
-                # and could then be removed here
-                job.interactive_flush_frequency = 10 ** 10
-                job.interactive_write_frequency = 10 ** 10
-            job.calc_static()
-            job.run()
-        else:
-            raise TypeError('Job of class {} is not compatible.'.format(ref_job.__class__))
-
-        return job.project.path, job.job_name
-
-    def _reload(self):
-        """
-        Reload a saved job from its `project_path` and `job_name`.
+        Reload a saved job from its `job_project_path` and `job_name`.
         """
         pr = Project(path=self._job_project_path)
         self._job = pr.load(self._job_name)
-        self._job.interactive_open()
-        self._job.interactive_initialize_interface()
+        if isinstance(self._job, LammpsInteractive):
+            self._job.run_if_interactive()
 
     def _get_interactive_value(self, key):
         """
@@ -299,169 +295,117 @@ class ExternalHamiltonian(PrimitiveVertex):
             raise NotImplementedError
         return val
 
-    def finish(self):
-        """
-        Close the interactive job.
-        """
-        super(ExternalHamiltonian, self).finish()
-        if self._job is not None:
-            self._job.interactive_close()
 
-
-class CreateJob(ExternalHamiltonian):
+class CreateSubJobs(PrimitiveVertex):
     """
-    Creates a job of an external interpreter (e.g. Lammps, Vasp, Sphinx...) outside of the `ExternalHamiltonian`.
-        This vertex does not run the interpreter, but only creates the job and saves it.
+    Create sub jobs of an external interpreter (e.g. Lammps, Vasp, Sphinx...).
+        This vertex does not run the interpreter to give properties, but only creates the sub jobs and saves them.
     Input attributes:
-        ref_job_full_path (string): The full path to the hdf5 file of the job to use as a reference template.
-            (Default is None.)
-        n_images (int): Number of jobs to create. (Default is 5.)
-        structure (Atoms): The structure for initializing the external Hamiltonian. Overwrites the reference
-            job structure when provided. (Default is None, the reference job needs to have its structure set.)
+        ref_job (GenricInteractive/LammpsInteractive/VaspInteractive/SphinxInteractive/HessianJob/
+        DecoupledOscillators): The reference job, from which to create the sub jobs. The reference job should
+        have all the necessary inputs, ex. structure, potential etc. (Default is None, no reference job)
+        n_images (int): Number of sub jobs to create. (Default is 1.)
+        structure (Atoms): The structure to assign to the sub-job
     Output attributes:
-        project_path (list/string): The path of the project.
-        job_names (list/string): The name of the job.
+        jobs_project_path (list of strings): The project path of the sub jobs.
+        jobs_names (list of strings): The names of the jobs.
     """
 
     def __init__(self, name=None):
-        super(CreateJob, self).__init__(name=name)
+        super(CreateSubJobs, self).__init__(name=name)
         self._fast_lammps_mode = True
-        self._project_path = None
-        self._job_names = None
+        self._jobs_project_path = None
+        self._jobs_names = None
         id_ = self.input.default
         id_.ref_job_full_path = None
-        id_.n_images = 5
+        id_.n_images = 1
         id_.structure = None
 
     def command(self, ref_job_full_path, n_images, structure, *args, **kwargs):
-        graph_location = self.get_graph_location()
-        job_names = []
-        project_path = []
+        project_path, ref_job_name = split(ref_job_full_path)
+        pr = Project(path=project_path)
+        ref_job = pr.load(ref_job_name)
+        pr_sub = pr.create_group(self.vertex_name + "_children")
+        self._jobs_project_path = []
+        self._jobs_names = []
         for i in np.arange(n_images):
-            name = graph_location + '_' + str(i)
-            output = self._initialize(graph_location, ref_job_full_path, structure,
-                                      self._fast_lammps_mode, name)
-            project_path.append(output[0])
-            job_names.append(output[1])
-        self._project_path = project_path
-        self._job_names = job_names
-
+            name = self.vertex_name + '_' + str(i)
+            _, p_path, j_name = self._initialize(pr_sub, ref_job, self._fast_lammps_mode, name, structure)
+            self._jobs_project_path.append(p_path)
+            self._jobs_names.append(j_name)
         return {
-            'project_path': project_path,
-            'job_names': job_names
+            'jobs_project_path': self._jobs_project_path,
+            'jobs_names': self._jobs_names
         }
+
+    @staticmethod
+    def _initialize(pr, ref_job, fast_lammps_mode, name, structure):
+        """
+        Initialize/create the interactive job and save it.
+        """
+        job = ref_job.copy_to(
+            project=pr,
+            new_job_name=name,
+            input_only=True,
+            new_database_entry=False,
+            delete_existing_job=True
+        )
+        if structure is not None:
+            job.structure = structure
+        if isinstance(job, GenericInteractive):
+            job.interactive_open()
+            if isinstance(job, LammpsInteractive) and fast_lammps_mode:
+                # Note: This might be done by default at some point in LammpsInteractive,
+                # and could then be removed here
+                job.interactive_flush_frequency = 10 ** 10
+                job.interactive_write_frequency = 10 ** 10
+            job.validate_ready_to_run()
+            job.save()
+        else:
+            raise TypeError("Job of class {} is not compatible".format(ref_job.__class__))
+        return job, job.project.path, job.job_name
 
     def finish(self):
         """
-        Close the interactive job.
+        Close all the interactive sub jobs.
         """
-        super(CreateJob, self).finish()
-        if all(v is not None for v in [self._project_path, self._job_names]):
-            pr = Project(path=self._project_path[-1])
-            for jn in self._job_names:
-                job = pr.load(jn)
+        super(CreateSubJobs, self).finish()
+        if all(v is not None for v in [self._jobs_project_path, self._jobs_names]):
+            pr = Project(path=self._jobs_project_path[-1])
+            for name in self._jobs_names:
+                job = pr.load(name)
                 if isinstance(job, GenericInteractive):
                     job.interactive_close()
                     job.status.finished = True
 
 
-class MinimizeReferenceJob(ExternalHamiltonian):
-    """
-    Minimizes a job using an external interpreter (e.g. Lammps, Vasp, Sphinx...) outside of the `ExternalHamiltonian`.
-        This vertex minimizes the job at constant volume or constant pressure.
-    Input attributes:
-        ref_job_full_path (string): The full path to the hdf5 file of the job to use as a reference template.
-            (Default is None.)
-        pressure (float): Pressure of the system. (Default is None.)
-        structure (Atoms): The structure for initializing the external Hamiltonian. Overwrites the reference
-            job structure when provided. (Default is None, the reference job needs to have its structure set.)
-    Output attributes:
-        energy_pot (float): The evaluated potential energy.
-        forces (numpy.ndarray): The evaluated forces.
-    """
-
-    def __init__(self, name=None):
-        super(MinimizeReferenceJob, self).__init__(name=name)
-        self._fast_lammps_mode = True
-        id_ = self.input.default
-        id_.ref_job_full_path = None
-        id_.pressure = None
-        id_.structure = None
-
-    def command(self, ref_job_full_path, structure, pressure=None, *args, **kwargs):
-        graph_location = self.get_graph_location()
-        name = 'minimize_ref_job'
-        project_path, job_name = self._initialize(graph_location, ref_job_full_path, structure,
-                                                  self._fast_lammps_mode, name)
-        pr = Project(path=project_path)
-        job = pr.load(job_name)
-        job.structure = structure
-        job.calc_minimize(pressure=pressure)
-        job.run(delete_existing_job=True)
-        if isinstance(job, GenericInteractive):
-            job.interactive_close()
-
-        return {
-            'energy_pot': job.output.energy_pot[-1],
-            'forces': job.output.forces[-1]
-        }
-
-
-class RemoveJob(PrimitiveVertex):
-    """
-    Remove an existing job/s from a project path.
-    Input attributes:
-        project_path (string): The path of the project. (Default is None.)
-        job_names (string): The names of the jobs to be removed. (Default is None.)
-    """
-    def __init__(self, name=None):
-        super(RemoveJob, self).__init__(name=name)
-        self.input.default.project_path = None
-        self.input.default.job_names = None
-
-    def command(self, project_path, job_names):
-        if all(v is not None for v in [project_path, job_names]):
-            pr = Project(path=project_path)
-            for name in job_names:
-                pr.remove_job(name)
-
-
 class GradientDescent(PrimitiveVertex):
     """
-    Simple gradient descent update for positions in `flex_output` and structure.
+    Simple gradient descent update for positions.
     Input attributes:
         gamma0 (float): Initial step size as a multiple of the force. (Default is 0.1.)
         fix_com (bool): Whether the center of mass motion should be subtracted off of the position update.
             (Default is True)
-        use_adagrad (bool): Whether to have the step size decay according to adagrad. (Default is False)
         output_displacements (bool): Whether to return the per-atom displacement vector in the output dictionary.
     Output attributes:
         positions (numpy.ndarray): The updated positions.
         displacements (numpy.ndarray): The displacements, if `output_displacements` is True.
-    TODO: Fix adagrad bug when GradientDescent is passed as a Serial vertex
     """
 
     def __init__(self, name=None):
         super(GradientDescent, self).__init__(name=name)
-        self._accumulated_force = 0
         id_ = self.input.default
         id_.gamma0 = 0.1
         id_.fix_com = True
-        id_.use_adagrad = False
 
-    def command(self, positions, forces, gamma0, use_adagrad, fix_com, mask=None, masses=None,
-                output_displacements=True):
+    def command(self, positions, forces, gamma0, fix_com, mask=None, masses=None, output_displacements=False):
 
-        positions = np.array(positions)
-        forces = np.array(forces)
         unmasked_positions = None
-
         if mask is not None:
             masked = True
             mask = np.array(mask)
             # Preserve data
             unmasked_positions = positions.copy()
-
             # Mask input data
             positions = positions[mask]
             forces = forces[mask]
@@ -469,38 +413,78 @@ class GradientDescent(PrimitiveVertex):
         else:
             masked = False
 
-        if use_adagrad:
-            self._accumulated_force += np.sqrt(np.sum(forces * forces))
-            gamma0 /= self._accumulated_force
-
-        pos_change = gamma0 * np.array(forces)
+        positions_change = gamma0 * -forces
 
         if fix_com:
             masses = np.array(masses)[:, np.newaxis]
             total_mass = np.sum(masses)
-            com_change = np.sum(pos_change * masses, axis=0) / total_mass
-            pos_change -= com_change
+            com_change = np.sum(positions_change * masses, axis=0) / total_mass
+            positions_change -= com_change
         # TODO: fix angular momentum
 
-        new_pos = positions + pos_change
+        new_positions = positions - positions_change
 
         if masked:
-            unmasked_positions[mask] = new_pos
-            new_pos = unmasked_positions
-            disp = np.zeros(unmasked_positions.shape)
-            disp[mask] = pos_change
+            unmasked_positions[mask] = new_positions
+            new_positions = unmasked_positions
+            displacements = np.zeros(unmasked_positions.shape)
+            displacements[mask] = positions_change
         else:
-            disp = pos_change
+            displacements = positions_change
 
         if output_displacements:
             return {
-                'positions': new_pos,
-                'displacements': disp
+                'positions': new_positions,
+                'displacements': displacements
             }
         else:
             return {
-                'positions': new_pos
+                'positions': new_positions
             }
+
+
+class GradientDescentGamma(PrimitiveVertex):
+    """
+    Calculate the step size (gamma) to be used in GradientDescent dynamically, using the line search formula in
+        https://en.wikipedia.org/wiki/Gradient_descent.
+    Input attributes:
+        gamma (float): Current step size. Value should be <= 0.2, otherwise the computation may hang.
+            (Default is 0.1.)
+        old_positions (numpy.ndarray): The positions of the previous step.
+        new_positions (numpy.ndarray): The positions of the current step.
+        old_forces (numpy.ndarray): The forces (-gradient of energy) of the previous step.
+        new_forces (numpy.ndarray): The forces (-gradient of energy) of the current step.
+        dynamic (bool): If True, calculate a new gamma for every step. Otherwise, keep the gamma fixed at gamma0.
+            (Default is True, compute gamma dynamically.)
+    Output attributes:
+        new_positions (numpy.ndarray): The positions of the current step.
+        new_forces (numpy.ndarray): The forces (-gradient of energy) of the current step.
+        new_gamma (float): The new gamma, obtained using line search.
+    """
+
+    def __init__(self, name=None):
+        super(GradientDescentGamma, self).__init__(name=name)
+        self.initialized = False
+
+    def command(self, gamma, old_positions, new_positions, old_forces, new_forces, dynamic=True):
+        if not self.initialized:
+            new_gamma = gamma
+            self.initialized = True
+        elif dynamic:
+            positions_diff = (old_positions - new_positions)
+            force_diff = -old_forces - (-new_forces)
+            denominator = np.linalg.norm(force_diff)
+            if np.isclose(denominator, 0.):
+                new_gamma = 0.
+            else:
+                new_gamma = np.tensordot(positions_diff, force_diff) / denominator
+        else:
+            new_gamma = gamma
+        return {
+            'new_positions': new_positions,
+            'new_forces': new_forces,
+            'new_gamma': new_gamma
+        }
 
 
 class InitialPositions(PrimitiveVertex):
@@ -527,15 +511,12 @@ class InitialPositions(PrimitiveVertex):
             pos_i = structure_initial.positions
             pos_f = structure_final.positions
             displacement = structure_initial.find_mic(pos_f - pos_i)
-
             initial_positions = []
             for n, mix in enumerate(np.linspace(0, 1, n_images)):
                 initial_positions.append(pos_i + (mix * displacement))
-
         else:
             if len(initial_positions) != n_images:
-                raise TypeError("Length of positions is not the same as n_images!")
-
+                raise TypeError("Length of positions is not the same as n_images")
         return {
             'initial_positions': initial_positions
         }
@@ -566,22 +547,23 @@ class HarmonicHamiltonian(PrimitiveVertex):
     def __init__(self, name=None):
         super(HarmonicHamiltonian, self).__init__(name=name)
         id_ = self.input.default
-        id_.spring_constant = None
+        id_.spring_constants_list = None
         id_.force_constants = None
 
-    def command(self, positions, reference_positions, structure, spring_constant=None, force_constants=None,
-                mask=None, eq_energy=None):
-
+    def command(self, positions, structure, spring_constants_list=None, force_constants=None, mask=None):
+        reference_positions = structure.positions
         dr = structure.find_mic(positions - reference_positions)
-        if spring_constant is not None and force_constants is None:
+        if spring_constants_list is not None and force_constants is None:
             if mask is not None:
-                forces = -spring_constant * dr[mask]
-                energy = -0.5 * np.dot(dr[mask], forces)
+                spring_constants_list = np.expand_dims(spring_constants_list, axis=-1)
+                forces = -np.array(spring_constants_list) * dr[mask]
+                energy = 0
+                for i, m in enumerate(mask):
+                    energy += -0.5 * np.dot(dr[m], forces[i].T)
             else:
-                forces = -spring_constant * dr
+                forces = -np.array(spring_constants_list) * dr
                 energy = -0.5 * np.tensordot(dr, forces)
-
-        elif force_constants is not None and spring_constant is None:
+        elif force_constants is not None and spring_constants_list is None:
             transformed_force_constants = self.transform_force_constants(force_constants, len(structure.positions))
             transformed_displacements = self.transform_displacements(dr)
             transformed_forces = -np.dot(transformed_force_constants, transformed_displacements)
@@ -592,13 +574,8 @@ class HarmonicHamiltonian(PrimitiveVertex):
             else:
                 forces = retransformed_forces
                 energy = -0.5 * np.tensordot(forces, dr)
-
         else:
-            raise TypeError('Please specify either a spring constant or the force constant matrix')
-
-        if eq_energy is not None:
-            energy += eq_energy
-
+            raise TypeError("Please specify either a spring constant or the force constant matrix")
         return {
             'forces': forces,
             'energy_pot': energy
@@ -607,6 +584,7 @@ class HarmonicHamiltonian(PrimitiveVertex):
     @staticmethod
     def transform_force_constants(force_constants, n_atoms):
         force_shape = np.shape(force_constants)
+        transformed_force_constants = None
         if force_shape[2] == 3 and force_shape[3] == 3:
             force_reshape = force_shape[0] * force_shape[2]
             transformed_force_constants = np.transpose(
@@ -615,7 +593,6 @@ class HarmonicHamiltonian(PrimitiveVertex):
             ).reshape((force_reshape, force_reshape))
         elif force_shape[1] == 3 and force_shape[3] == 3:
             transformed_force_constants = np.array(force_constants).reshape(3 * n_atoms, 3 * n_atoms)
-
         return transformed_force_constants
 
     @staticmethod
@@ -654,14 +631,12 @@ class LangevinThermostat(PrimitiveVertex):
         # Ensure that masses are a commensurate shape
         masses = np.array(masses)[:, np.newaxis]
         gamma = masses / damping_timescale
-        np.random.seed()
         noise = np.sqrt(2 * (gamma / time_step) * KB * temperature) * np.random.randn(*velocities.shape)
         drag = -gamma * velocities
         thermostat_forces = noise + drag
 
         if fix_com:  # Apply zero net force
             thermostat_forces -= np.mean(noise, axis=0)
-
         return {
             'forces': thermostat_forces
         }
@@ -735,7 +710,7 @@ class NEBForces(PrimitiveVertex):
         super(NEBForces, self).__init__(name=name)
         id_ = self.input.default
         id_.spring_constant = 1.
-        id_.tangent_style = 'upwinding'
+        id_.tangent_style = "upwinding"
         id_.use_climbing_image = True
         id_.smoothing = None
 
@@ -767,11 +742,11 @@ class NEBForces(PrimitiveVertex):
             tau_right = dr_right / np.linalg.norm(dr_right)
 
             # Calculate the NEB tangent vector
-            if tangent_style == 'plain':
+            if tangent_style == "plain":
                 tau = self.normalize(dr_right + dr_left)
-            elif tangent_style == 'improved':
+            elif tangent_style == "improved":
                 tau = self.normalize(tau_left + tau_right)
-            elif tangent_style == 'upwinding':
+            elif tangent_style == "upwinding":
                 en_left = energies[i - 1]
                 en = energies[i]
                 en_right = energies[i + 1]
@@ -799,7 +774,6 @@ class NEBForces(PrimitiveVertex):
                 dr_mag = np.linalg.norm(dr_right) - np.linalg.norm(dr_left)
                 force_spring = spring_constant * dr_mag * tau
                 neb_forces.append(input_force_perpendicular + force_spring + force_smoothing)
-
         return {
             'forces': neb_forces
         }
@@ -917,7 +891,6 @@ class RandomVelocity(PrimitiveVertex):
     def command(self, temperature, masses, overheat_fraction):
         masses = np.array(masses)[:, np.newaxis]
         vel_scale = np.sqrt(EV_TO_U_ANGSQ_PER_FSSQ * KB * temperature / masses) * np.sqrt(overheat_fraction)
-        np.random.seed(0)
         vel_dir = np.random.randn(len(masses), 3)
         vel = vel_scale * vel_dir
         vel -= np.mean(vel, axis=0)
@@ -1003,25 +976,35 @@ class SphereReflectionPerAtom(PrimitiveVertex):
     def __init__(self, name=None):
         super(SphereReflectionPerAtom, self).__init__(name=name)
         id_ = self.input.default
-        id_.use_reflection = True
+        id_.use_reflection = False
         id_.total_steps = 0
+        id_.cutoff_factor = 0.48
+        id_.cutoff_distance = None
 
-    def command(self, reference_positions, cutoff_distance, positions, velocities, previous_positions,
+    def command(self, reference_positions, cutoff_factor, cutoff_distance, positions, velocities, previous_positions,
                 previous_velocities, structure, use_reflection, total_steps):
+
+        if (total_steps == 0) and use_reflection:
+            try:
+                nn_list = structure.get_neighbors(num_neighbors=1)
+            except ValueError:
+                nn_list = structure.get_neighbors(num_neighbors=1)
+            cutoff_distance = nn_list.distances[0] * cutoff_factor
+
         total_steps += 1
         if use_reflection:
             distance = np.linalg.norm(structure.find_mic(reference_positions - positions), axis=-1)
             is_at_home = (distance < cutoff_distance)[:, np.newaxis]
             is_away = 1 - is_at_home
         else:
-            is_at_home = np.ones(len(reference_positions))
+            is_at_home = np.ones(len(reference_positions))[:, np.newaxis]
             is_away = 1 - is_at_home
-
         return {
             'positions': is_at_home * positions + is_away * previous_positions,
             'velocities': is_at_home * velocities + is_away * -previous_velocities,
             'reflected': is_away.astype(bool).flatten(),
-            'total_steps': total_steps
+            'total_steps': total_steps,
+            'cutoff_distance': cutoff_distance
         }
 
 
@@ -1031,7 +1014,7 @@ class CutoffDistance(PrimitiveVertex):
     Input attributes:
         structure (Atoms): The reference structure.
         cutoff_factor (float): The cutoff is obtained by taking the first nearest neighbor distance and multiplying
-            it by the cutoff factor. A default value of 0.4 is chosen, because taking a cutoff factor of ~0.5
+            it by the cutoff factor. A default value of 0.48 is chosen, because taking a cutoff factor of ~0.5
             sometimes let certain reflections off the hook, and we do not want that to happen.
     Output attributes:
         cutoff_distance (float): The cutoff distance.
@@ -1044,7 +1027,6 @@ class CutoffDistance(PrimitiveVertex):
             nn_list = structure.get_neighbors(num_neighbors=1)
 
         cutoff_distance = nn_list.distances[0] * cutoff_factor
-
         return {
             'cutoff_distance': cutoff_distance[-1]
         }
@@ -1099,7 +1081,7 @@ class VerletParent(PrimitiveVertex, ABC):
         damping_timescale (float): Damping timescale in fs. (Default is None, no thermostat is used.)
     TODO: VerletVelocityUpdate should *always* have its velocity input wired to the velocity outupt of
           VerletPositionUpdate. This implies to me that we need some structure *other* than two fully independent
-          nodes. It would also be nice to syncronize, e.g. the thermostat and timestep input which is also the same
+          nodes. It would also be nice to synchronize, e.g. the thermostat and timestep input which is also the same
           for both. However, I haven't figured out how to do that in the confines of the current graph traversal
           and hdf5 setup.
     """
@@ -1139,7 +1121,6 @@ class VerletParent(PrimitiveVertex, ABC):
             (numpy.ndarray): Per atom accelerations to use for changing velocities.
         """
         drag = -0.5 * time_step * velocities / damping_timescale
-        np.random.seed()
         noise = np.sqrt(EV_TO_U_ANGSQ_PER_FSSQ * KB * temperature * time_step / (masses * damping_timescale)) \
                 * np.random.randn(*velocities.shape)
         noise -= np.mean(noise, axis=0)
@@ -1175,7 +1156,6 @@ class VerletPositionUpdate(VerletParent):
                 velocities
             )
         pos_step = positions + vel_half * time_step
-
         return {
             'positions': pos_step,
             'velocities': vel_half
@@ -1216,7 +1196,6 @@ class VerletVelocityUpdate(VerletParent):
             )
         kinetic_energy = 0.5 * np.sum(masses * vel_step * vel_step) / EV_TO_U_ANGSQ_PER_FSSQ
         instant_temperature = (kinetic_energy * 2) / (3 * KB * len(velocities))
-
         return {
             'velocities': vel_step,
             'energy_kin': kinetic_energy,
@@ -1287,7 +1266,7 @@ class WeightedSum(PrimitiveVertex):
             n = len(vectors)
             weights = np.ones() / n
         elif len(weights) != len(vectors):
-            raise ValueError('The length of the weights and vectors must be comensurate, but were {} and {}'.format(
+            raise ValueError("The length of the weights and vectors must be comensurate, but were {} and {}".format(
                 len(weights), len(vectors)))
 
         # Mask vectors
@@ -1309,7 +1288,6 @@ class WeightedSum(PrimitiveVertex):
         # If dot reduces to a single value, recast
         if len(weighted_sum.shape) == 0:
             weighted_sum = float(weighted_sum)
-
         return {
             'weighted_sum': weighted_sum
         }
@@ -1360,6 +1338,9 @@ class WelfordOnline(PrimitiveVertex):
 class FEPExponential(PrimitiveVertex):
     """
     Compute the free energy perturbation exponential difference.
+    Note: If the calculation of exponential difference gives a RuntimeWarning, it means that the 2 systems
+        between which the free energy is to be computed are very dissimilar, and the value of exponential_difference
+        is set to 0.
     Input attributes:
         u_diff (float): The energy difference between system B and system A.
         delta_lambda (float): The delta for the lambdas for the two systems A and B.
@@ -1369,15 +1350,80 @@ class FEPExponential(PrimitiveVertex):
     """
 
     def command(self, u_diff, delta_lambda, temperature):
+        warnings.filterwarnings("error")
+        try:
+            exponential_difference = np.exp(-u_diff * delta_lambda / (KB * temperature))
+        except RuntimeWarning:
+            exponential_difference = np.nan
+        warnings.filterwarnings("default")
         return {
-            'exponential_difference': np.exp(-u_diff * delta_lambda / (KB * temperature))
+            'exponential_difference': exponential_difference
         }
+
+
+class TILDValidate(PrimitiveVertex):
+    """
+    Check if all the inputs fir the TILD protocol are in order.
+    Input attributes:
+         ref_job_a_full_path (str): Path to the job containing the initial state of the system. Should be a job of type
+            LammpsInteractive/VaspInteractive/SphinxInteractive/HessianJob/DecoupledOscillators.
+        ref_job_b_full_path (str): Path to the job containing the initial state of the system. Should be a job of type
+            LammpsInteractive/VaspInteractive/SphinxInteractive/HessianJob/DecoupledOscillators.
+        n_steps (int): How many MD steps to run for. (Default is 100.)
+        thermalization_steps (int): Number of steps the system is thermalized for to reach equilibrium. (Default is
+            10 steps.)
+        sampling_steps (int): Collect a 'sample' every 'sampling_steps' steps. (Default is 1, collect sample
+            for every MD step.
+        convergence_check_steps (int): Check for convergence once every 'convergence_check_steps'. (Default is once
+            every 10 steps.)
+    """
+
+    def command(self, ref_job_a_full_path, ref_job_b_full_path, n_steps, thermalization_steps, sampling_steps,
+                convergence_check_steps):
+        # check if the n_steps is divisible by (x) steps
+        message = "n_steps must be divisible by thermalization steps"
+        self._check_modulo(target=n_steps, mod=thermalization_steps, message=message)
+        message = "n_steps must be divisible by sampling_steps"
+        self._check_modulo(target=n_steps, mod=sampling_steps, message=message)
+        message = "n_steps must be divisible by convergence_check_steps"
+        self._check_modulo(target=n_steps, mod=convergence_check_steps, message=message)
+
+        # check if convergence_check_steps > thermalization_steps
+        if convergence_check_steps < thermalization_steps:
+            raise ValueError("convergence_check_steps must be greater than thermalization steps")
+
+        # extract the structures from the reference jobs
+        structure_a = self._get_structure(path=ref_job_a_full_path)
+        structure_b = self._get_structure(path=ref_job_b_full_path)
+        return {
+            'structure_a': structure_a,
+            'structure_b': structure_b
+        }
+
+    @staticmethod
+    def _get_structure(path):
+        project_path, ref_job_name = split(path)
+        pr = Project(path=project_path)
+        ref_job = pr.load(ref_job_name)
+        if not isinstance(ref_job, (LammpsInteractive, VaspInteractive, SphinxInteractive, HessianJob,
+                                    DecoupledOscillators)):
+            error = f"Got reference type {type(ref_job)} for " + ref_job_name + ", which is not a recognized" \
+                                                                                " reference job for this protocol"
+            raise TypeError(error)
+        return ref_job.structure.copy()
+
+    @staticmethod
+    def _check_modulo(target, mod, message):
+        if target % mod != 0:
+            raise ValueError(message)
 
 
 class TILDPostProcess(PrimitiveVertex):
     """
-    Post processing for the Harmonic and Vacancy TILD protocols, to remove the necessity to load interactive
-        jobs after they have been closed, once the protocol has been executed.
+    Post processing for the TILD protocols, to compute the free energy between the input systems.
+        Also calculates the free energy using free energy perturbation (fep). For fep, if the systems are dissimilar,
+        meaning the potential energies of the reference and the final systems are not similar, then returns None
+        as the fep outputs.
     Input attributes:
         lambda_pairs (numpy.ndarray): The (`n_lambdas`, 2)-shaped array of mixing pairs.
         tild_mean (list): The mean of the computed integration points.
@@ -1395,8 +1441,11 @@ class TILDPostProcess(PrimitiveVertex):
         fep_free_energy_se (float): The standard error calculated via free energy perturbation.
     """
 
-    def command(self, lambda_pairs, tild_mean, tild_std, fep_exp_mean, fep_exp_std, temperature, n_samples):
+    def __init__(self, name=None):
+        super(TILDPostProcess, self).__init__(name=name)
+        self.output.tild_free_energy_se = [np.nan]
 
+    def command(self, lambda_pairs, tild_mean, tild_std, fep_exp_mean, fep_exp_std, temperature, n_samples):
         tild_fe_mean, tild_fe_std, tild_fe_se = self.get_tild_free_energy(lambda_pairs, tild_mean, tild_std,
                                                                           n_samples)
         fep_fe_mean, fep_fe_std, fep_fe_se = self.get_fep_free_energy(fep_exp_mean, fep_exp_std, n_samples,
@@ -1408,44 +1457,57 @@ class TILDPostProcess(PrimitiveVertex):
             'fep_free_energy_mean': fep_fe_mean,
             'fep_free_energy_std': fep_fe_std,
             'fep_free_energy_se': fep_fe_se
-
         }
 
-    @staticmethod
-    def get_tild_free_energy(lambda_pairs, tild_mean, tild_std, n_samples):
-        y = unumpy.uarray(tild_mean, tild_std)
-        integral = simps(x=lambda_pairs[:, 0], y=y)
-        mean = unumpy.nominal_values(integral)
-        std = unumpy.std_devs(integral)
-        tild_se = tild_std / np.sqrt(n_samples)
-        y_se = unumpy.uarray(tild_mean, tild_se)
-        integral_se = simps(x=lambda_pairs[:, 0], y=y_se)
-        se = unumpy.std_devs(integral_se)
+    def get_tild_free_energy(self, lambda_pairs, tild_mean, tild_std, n_samples):
+        if np.nan not in [tild_mean, tild_std]:
+            lambdas = lambda_pairs[:, 0]
+            # calculate integral mean and std
+            mean, std = self._get_tild_integral_mean_std(lambdas=lambdas, mean=tild_mean, std=tild_std)
+            # also calculate the integral by passing in the tild_se. This way, the tild_se also propagates
+            # through the integral
+            tild_se = tild_std / np.sqrt(n_samples)
+            _, se = self._get_tild_integral_mean_std(lambdas=lambdas, mean=tild_mean, std=tild_se)
+        else:
+            mean = np.nan
+            std = np.nan
+            se = np.nan
+        return mean, std, se
 
-        return float(mean), float(std), float(se)
+    @staticmethod
+    def _get_tild_integral_mean_std(lambdas, mean, std):
+        y = unumpy.uarray(mean, std)
+        integral = simps(x=lambdas, y=y)
+        return float(unumpy.nominal_values(integral)), float(unumpy.std_devs(integral))
+
+    def get_fep_free_energy(self, fep_exp_mean, fep_exp_std, n_samples, temperature):
+        if np.nan not in [fep_exp_mean, fep_exp_std]:
+            # calculate integral mean and std
+            mean, std = self._get_fep_integral_mean_std(temperature=temperature, mean=fep_exp_mean, std=fep_exp_std)
+            # also calculate the integral by passing in the tild_se. This way, the tild_se also propagates
+            # through the summation
+            fep_exp_se = fep_exp_std / np.sqrt(n_samples)
+            _, se = self._get_fep_integral_mean_std(temperature=temperature, mean=fep_exp_mean, std=fep_exp_se)
+        else:
+            mean = np.nan
+            std = np.nan
+            se = np.nan
+        return mean, std, se
 
     @staticmethod
-    def get_fep_free_energy(fep_exp_mean, fep_exp_std, n_samples, temperature):
-        fep_exp_se = fep_exp_std / np.sqrt(n_samples)
-        y = unumpy.uarray(fep_exp_mean, fep_exp_std)
-        y_se = unumpy.uarray(fep_exp_mean, fep_exp_se)
+    def _get_fep_integral_mean_std(temperature, mean, std):
+        y = unumpy.uarray(mean, std)
         free_energy = 0
-        free_energy_se = 0
-        for (val, val_se) in zip(y, y_se):
+        for val in y:
             free_energy += -KB * temperature * unumpy.log(val)
-            free_energy_se += -KB * temperature * unumpy.log(val_se)
-        mean = unumpy.nominal_values(free_energy)
-        std = unumpy.std_devs(free_energy)
-        se = unumpy.std_devs(free_energy_se)
-
-        return float(mean), float(std), float(se)
+        return float(unumpy.nominal_values(free_energy)), float(unumpy.std_devs(free_energy))
 
 
 class BerendsenBarostat(PrimitiveVertex):
     """
     The Berendsen barostat which can be used for pressure control as elaborated in
     https://doi.org/10.1063/1.448118
-    NOTE: Always use in conjunction with a thermostat, otherwise time integration will not be performed.
+    Note: Always use in conjunction with a thermostat, otherwise time integration will not be performed.
     The barostat only modifies the cell of the input structure, and scales the positions. Positions
     and velocities will only be updated by the thermostat.
     Input attributes:
@@ -1476,13 +1538,13 @@ class BerendsenBarostat(PrimitiveVertex):
         id_.pressure_damping_timescale = 1000.
         id_.time_step = 1.
         id_.compressibility = 4.57e-5  # compressibility of water in bar^-1
-        id_.pressure_style = 'isotropic'
+        id_.pressure_style = "isotropic"
 
     def command(self, pressure, temperature, box_pressure, energy_kin, time_step, positions,
                 pressure_damping_timescale, compressibility, structure, previous_volume, pressure_style):
 
-        if pressure_style != 'isotropic' and pressure_style != 'anisotropic':
-            raise TypeError('style can only be \'isotropic\' or \'anisotropic\'')
+        if pressure_style != "isotropic" and pressure_style != "anisotropic":
+            raise TypeError("style can only be \'isotropic\' or \'anisotropic\'")
 
         n_atoms = len(structure.positions)
 
@@ -1497,7 +1559,7 @@ class BerendsenBarostat(PrimitiveVertex):
         if pressure is None:
             new_structure = structure.copy()
             total_pressure = isotropic_pressure
-        elif pressure is not None and pressure_style == 'isotropic':
+        elif pressure is not None and pressure_style == "isotropic":
             new_structure = structure.copy()
             new_structure.positions = positions
             first_term = ((2 * energy_kin) / (3 * previous_volume)) * EV_PER_ANGCUB_TO_GPA
@@ -1506,7 +1568,7 @@ class BerendsenBarostat(PrimitiveVertex):
             eta = 1 - (tau * (pressure - total_pressure) * GPA_TO_BAR)
             new_cell = new_structure.cell * eta
             new_structure.set_cell(new_cell, scale_atoms=True)
-        elif pressure is not None and pressure_style == 'anisotropic':
+        elif pressure is not None and pressure_style == "anisotropic":
             new_structure = structure.copy()
             new_structure.positions = positions
             first_term = ((2 * energy_kin) / (3 * previous_volume)) * EV_PER_ANGCUB_TO_GPA
@@ -1526,8 +1588,7 @@ class BerendsenBarostat(PrimitiveVertex):
             new_structure.set_cell(new_cell, scale_atoms=True)
             total_pressure = np.mean([total_pressure_x, total_pressure_y, total_pressure_z])
         else:
-            raise TypeError('Invalid value for pressure')
-
+            raise TypeError("Invalid value for pressure")
         return {
             'pressure': total_pressure,
             'structure': new_structure,
@@ -1535,23 +1596,19 @@ class BerendsenBarostat(PrimitiveVertex):
         }
 
 
-class ComputeFormationEnergy(PrimitiveVertex):
+class NEBPostProcess(PrimitiveVertex):
     """
+    Compute the norm of the forces on the peak image.
+    Input attributes:
+        energy_pots (list): List of energy_pots of all the images in the band.
+        forces (list): List of forces of all the images in the band.
+    Output attributes:
+        force_norm (float): Norm of the forces on the peak image.
     """
 
-    def command(self, n_atoms, eq_energy, harm_to_inter_mean, harm_to_inter_std, harm_to_inter_se, inter_to_vac_mean,
-                inter_to_vac_std, inter_to_vac_se):
-
-        harm_to_inter_fe = unumpy.uarray(harm_to_inter_mean, harm_to_inter_std)
-        harm_to_inter_fe_se = unumpy.uarray(harm_to_inter_mean, harm_to_inter_se)
-        inter_to_vac_fe = unumpy.uarray(inter_to_vac_mean, inter_to_vac_std)
-        inter_to_vac_fe_se = unumpy.uarray(inter_to_vac_mean, inter_to_vac_se)
-
-        fe = ((eq_energy + harm_to_inter_fe) / n_atoms) + inter_to_vac_fe
-        fe_se = ((eq_energy + harm_to_inter_fe_se) / n_atoms) + inter_to_vac_fe_se
-
+    def command(self, energy_pots, forces):
+        max_index = np.argmax(energy_pots)
+        force_norm = np.linalg.norm(forces[max_index])
         return {
-            'formation_energy_mean': float(unumpy.nominal_values(fe)),
-            'formation_energy_std': float(unumpy.std_devs(fe)),
-            'formation_energy_se': float(unumpy.std_devs(fe_se))
+            'force_norm': force_norm
         }

@@ -7,7 +7,6 @@ import sys
 from pyiron_base import GenericJob
 from pyiron_contrib.protocol.utils import IODictionary, InputDictionary, LoggerMixin, Event, EventHandler, \
     Pointer, CrumbType, ordered_dict_get_last, Comparer, TimelineDict
-# from pyiron_contrib.protocol.utils.types import PyironJobTypeRegistry
 from pyiron_contrib.protocol.utils.pptree import print_tree as pptree
 from abc import ABC, abstractmethod
 
@@ -33,7 +32,6 @@ DEFAULT_WHITE_LIST_ATTRIBUTE_NAME = 'DefaultWhitelist'
 class Vertex(LoggerMixin, ABC):
     """
     A parent class for objects which are valid vertices of a directed acyclic graph.
-
     Attributes:
         input (InputDictionary): A pointer-capable dictionary for inputs, including a sub-dictionary for defaults.
             (Default is a clean dictionary.)
@@ -49,11 +47,9 @@ class Vertex(LoggerMixin, ABC):
         on (bool): Whether to execute the vertex when it is the active vertex of the graph, or simply skip over it.
             (default is True -- actually execute!)
         graph_parent (Vertex): The object who owns the graph that this vertex resides in. (Default is None.)
-
     Input attributes:
         default (IODictionary): A dictionary for fall-back values in case a key is requested that isn't in the main
             input dictionary.
-
     Archive attributes:
         whitelist (IODictionary): A nested dictionary of periods for archiving input and output values. Stores on
             executions where `clock % period = 0`.
@@ -147,11 +143,9 @@ class Vertex(LoggerMixin, ABC):
     def _set_archive_whitelist(self, archive, **kwargs):
         """
         Whitelist properties of either "input" or "output" archive and set their dump period.
-
         Args:
             archive (str): either 'input' or 'output'.
             **kwargs: property names, values should be positive integers, specifies the dump freq, None = inf = < 0.
-
         """
         for k, v in kwargs.items():
             whitelist = getattr(self.archive.whitelist, archive)
@@ -161,12 +155,10 @@ class Vertex(LoggerMixin, ABC):
         """
         Sets the archive period for each property of to "n" if keys is not specified.
         If keys is a list of property names, "n" will be set a s archiving period only for those
-
         Args:
             archive (str): Either 'input' or 'output'.
             n (int): Dump at every `n` steps
             keys (list of str): The affected keys
-
         """
         if keys is None:
             keys = list(getattr(self, archive).keys())
@@ -266,7 +258,6 @@ class Vertex(LoggerMixin, ABC):
     def to_hdf(self, hdf, group_name=None):
         """
         Store the Vertex in an HDF5 file.
-
         Args:
             hdf (ProjectHDFio): HDF5 group object.
             group_name (str): HDF5 subgroup name. (Default is None.)
@@ -288,7 +279,6 @@ class Vertex(LoggerMixin, ABC):
     def from_hdf(self, hdf, group_name=None):
         """
         Load the Vertex from an HDF5 file.
-
         Args:
             hdf (ProjectHDFio): HDF5 group object.
             group_name (str): HDF5 subgroup name. (Default is None.)
@@ -342,7 +332,6 @@ class PrimitiveVertex(Vertex):
 class CompoundVertex(Vertex):
     """
     Vertices which contain a graph and produce output only after traversing their graph to its exit point.
-
     Input:
         graph (Graph): The graph of vertices to traverse.
         protocol_finished (Event):
@@ -368,7 +357,7 @@ class CompoundVertex(Vertex):
         self.define_execution_flow()
         self.define_information_flow()
 
-        # On initialization, set the active verex to starting vertex
+        # On initialization, set the active vertex to starting vertex
         self.graph.active_vertex = self.graph.starting_vertex
 
         self.finished = False
@@ -449,7 +438,6 @@ class CompoundVertex(Vertex):
     def to_hdf(self, hdf, group_name=None):
         """
         Store the Protocol in an HDF5 file.
-
         Args:
             hdf (ProjectHDFio): HDF5 group object.
             group_name (str): HDF5 subgroup name - optional
@@ -460,7 +448,6 @@ class CompoundVertex(Vertex):
     def from_hdf(self, hdf=None, group_name=None):
         """
         Load the Protocol from an HDF5 file.
-
         Args:
             hdf (ProjectHDFio): HDF5 group object - optional
             group_name (str): HDF5 subgroup name - optional
@@ -485,7 +472,7 @@ class CompoundVertex(Vertex):
 
     def _set_archive_period(self, archive, n, keys=None):
         """
-        In constrast to Vertex._set_archive_period, this calls "n". if keys=None it will be applied to all vertices
+        In contrast to Vertex._set_archive_period, this calls "n". if keys=None it will be applied to all vertices
         Args:
             archive: (str) input or output
             n: (int) dump every "n" steps
@@ -540,7 +527,6 @@ class CompoundVertex(Vertex):
                     'structure': None
                 }
         ```
-
         Args:
             dictionary: (dict) the whitelist configuration
         """
@@ -683,10 +669,8 @@ class Protocol(CompoundVertex, GenericJob):
 class Graph(dict, LoggerMixin):
     """
     A directed graph of vertices and edges, and a method for iterating through the graph.
-
     Vertices and edges are the graph are explicitly stored as child classes inheriting from `dict` so that all
     'graphiness' is fully decoupled from the objects sitting at the vertices.
-
     Attributes:
         vertices (Vertices): Vertices of the graph.
         edges (Edges): Directed edges between the vertices.
@@ -743,12 +727,10 @@ class Graph(dict, LoggerMixin):
     def visualize(self, protocol_name, execution=True, dataflow=True):
         """
         Plot a visual representation of the graph.
-
         Args:
             protocol_name:
             execution (bool): Show the lines dictating the flow of graph traversal.
             dataflow (bool): Show the lines dictating where vertex input comes from.
-
         Returns:
             (graphviz.Digraph) The image representation of the protocols workflow
         """
@@ -879,7 +861,6 @@ class Graph(dict, LoggerMixin):
         """
         Follows the edge out of the active vertex to get the name of the next vertex and set it as the active vertex.
         If the active vertex has multiple possible states, the outbound edge for the current state will be chosen.
-
         Returns:
             (str) The name of the next vertex.
         """
@@ -896,7 +877,6 @@ class Graph(dict, LoggerMixin):
     def make_edge(self, start, end, state="next"):
         """
         Makes a directed edge connecting two vertices.
-
         Args:
             start (Vertex): The vertex for the edge to start at.
             end (Vertex): The vertex for the edge to end at.
@@ -925,7 +905,6 @@ class Graph(dict, LoggerMixin):
         """
         Adds an edge between every argument, in the order they're given. The edge is added for the vertex state "next",
         so this is only appropriate for vertices which don't have a non-trivial `vertex_state`.
-
         Args:
             *args (Vertex/str): Vertices to connect in a row, or the state connecting two vertices.
         """
@@ -1019,7 +998,6 @@ class Edges(dict):
     def initialize(self, vertex):
         """
         Set an outbound edge to `None` for each allowable vertex state.
-
         Args:
             vertex (Vertex): The vertex to assign an edge to.
         """

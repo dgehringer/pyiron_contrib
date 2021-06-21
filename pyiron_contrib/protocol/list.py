@@ -158,7 +158,7 @@ class ParallelList(ListVertex):
             times due to subprocess communication between the large number of workers in a single core.
     """
 
-    def __init__(self, child_type, sleep_time=0):
+    def __init__(self, child_type, sleep_time=Pointer(0.)):
         super(ParallelList, self).__init__(child_type)
         self.sleep_time = sleep_time
 
@@ -170,11 +170,9 @@ class ParallelList(ListVertex):
         for child in self.children:
             child.parallel_setup()
 
-        start_time = time.time()
         sleep_time = ~self.sleep_time
 
         all_child_output = Manager().dict()
-
         jobs = []
         for i, child in enumerate(self.children):
             job = Process(target=child.execute_parallel, args=(i, all_child_output))
@@ -185,8 +183,6 @@ class ParallelList(ListVertex):
         for job in jobs:
             job.join()
             time.sleep(sleep_time)
-
-        print(all_child_output.keys())
 
         ordered_child_output = dict.fromkeys(range(len(all_child_output)))
         for i in range(len(all_child_output)):
@@ -202,9 +198,6 @@ class ParallelList(ListVertex):
                 output_data[key] = values
         else:
             output_data = None
-
-        stop_time = time.time()
-        print('Time elapsed :', stop_time - start_time)
 
         return output_data
 
@@ -229,6 +222,9 @@ class SerialList(ListVertex):
 
         output_data = self._extract_output_data_from_children()
         return output_data
+
+    def finish(self):
+        super(SerialList, self).finish()
 
 
 class AutoList(ParallelList, SerialList):
