@@ -73,6 +73,7 @@ class FreeEnergy(AtomisticGenericJob):
                         n_print=n_print,
                         time_step=time_step,
                         langevin=langevin)
+        npt_job.server.cores = self.server.cores
         npt_job.run()
         self.output.npt_job = npt_job
 
@@ -127,6 +128,7 @@ class FreeEnergy(AtomisticGenericJob):
         phon_ref.structure = self.output.minimized_structure.copy()
         phon_ref.potential = self.input.potential
         phonopy_job = phon_ref.create_job(self.project.job_type.PhonopyJob, "phonopy_job")
+        phonopy_job.server.cores = self.server.cores
         phonopy_job.run()
         self.output.phonopy_job = phonopy_job
 
@@ -189,6 +191,7 @@ class FreeEnergy(AtomisticGenericJob):
         tild_job.input.cutoff_factor = cutoff_factor
         tild_job.input.use_reflection = use_reflection
         tild_job.input.zero_k_energy = zero_k_energy
+        tild_job.server.cores = self.server.cores
         tild_job.run()
         self.output.tild_job = tild_job
 
