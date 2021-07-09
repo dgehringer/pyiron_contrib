@@ -69,6 +69,10 @@ class _DecoupledOscillatorsInput(DataContainer):
 
 class DecoupledOscillators(GenericInteractive, GenericMaster):
     def __init__(self, project, job_name):
+        """
+        Evaluate forces on atoms and energy of a structure which contains 1 or more harmonic oscillators decoupled
+            from the interacting atoms.
+        """
         super(DecoupledOscillators, self).__init__(project, job_name)
         self.__version__ = "0.0.1"
         self.__name__ = "DecoupledOscillators"
@@ -277,6 +281,12 @@ class DecoupledOscillators(GenericInteractive, GenericMaster):
 
     def interactive_energy_pot_getter(self):
         return self.interactive_cache['energy_pot'][-1]
+
+    def interactive_pressures_getter(self):
+        pass
+
+    def interactive_volume_getter(self):
+        pass
 
     def to_hdf(self, hdf=None, group_name=None):
         """

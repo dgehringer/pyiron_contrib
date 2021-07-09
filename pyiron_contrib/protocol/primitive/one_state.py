@@ -313,7 +313,6 @@ class CreateSubJobs(PrimitiveVertex):
 
     def __init__(self, name=None):
         super(CreateSubJobs, self).__init__(name=name)
-        self._fast_lammps_mode = True
         self._jobs_project_path = None
         self._jobs_names = None
         id_ = self.input.default
@@ -330,7 +329,7 @@ class CreateSubJobs(PrimitiveVertex):
         self._jobs_names = []
         for i in np.arange(n_images):
             name = self.vertex_name + '_' + str(i)
-            _, p_path, j_name = self._initialize(pr_sub, ref_job, self._fast_lammps_mode, name, structure)
+            _, p_path, j_name = self._initialize(pr_sub, ref_job, name, structure)
             self._jobs_project_path.append(p_path)
             self._jobs_names.append(j_name)
         return {
@@ -339,7 +338,7 @@ class CreateSubJobs(PrimitiveVertex):
         }
 
     @staticmethod
-    def _initialize(pr, ref_job, fast_lammps_mode, name, structure):
+    def _initialize(pr, ref_job, name, structure):
         """
         Initialize/create the interactive job and save it.
         """
@@ -354,11 +353,10 @@ class CreateSubJobs(PrimitiveVertex):
             job.structure = structure
         if isinstance(job, GenericInteractive):
             job.interactive_open()
-            if isinstance(job, LammpsInteractive) and fast_lammps_mode:
-                # Note: This might be done by default at some point in LammpsInteractive,
-                # and could then be removed here
-                job.interactive_flush_frequency = 10 ** 10
-                job.interactive_write_frequency = 10 ** 10
+            # Note: This might be done by default at some point in LammpsInteractive,
+            # and could then be removed here
+            job.interactive_flush_frequency = 10 ** 10
+            job.interactive_write_frequency = 10 ** 10
             job.validate_ready_to_run()
             job.save()
         else:
@@ -450,15 +448,18 @@ class GradientDescentGamma(PrimitiveVertex):
     Input attributes:
         gamma (float): Current step size. Value should be <= 0.2, otherwise the computation may hang.
             (Default is 0.1.)
-        old_positions (numpy.ndarray): The positions of the previous step.
-        new_positions (numpy.ndarray): The positions of the current step.
+        old_energy (numpy.ndarray): The energy_pot of the previous step.
+        new_energy (numpy.ndarray): The energy_pot of the current step.
         old_forces (numpy.ndarray): The forces (-gradient of energy) of the previous step.
         new_forces (numpy.ndarray): The forces (-gradient of energy) of the current step.
-        dynamic (bool): If True, calculate a new gamma for every step. Otherwise, keep the gamma fixed at gamma0.
+        c (float): A value between (0, 1) to scale the gradient. (Default is 0.1)
+        tau1 (float): A value between (0, 1) to scale up the gamma value. (Default is 1.)
+        tau1 (float): A value between (0, 1) to scale down the gamma value. (Default is 0.2)
+        dynamic_gamma (bool): If True, calculate a new gamma for every step. Otherwise, keep the gamma fixed at gamma0.
             (Default is True, compute gamma dynamically.)
     Output attributes:
-        new_positions (numpy.ndarray): The positions of the current step.
-        new_forces (numpy.ndarray): The forces (-gradient of energy) of the current step.
+        old_energy (numpy.ndarray): The energy_pot of the current step.
+        old_forces (numpy.ndarray): The forces (-gradient of energy) of the current step.
         new_gamma (float): The new gamma, obtained using line search.
     """
 
@@ -466,23 +467,23 @@ class GradientDescentGamma(PrimitiveVertex):
         super(GradientDescentGamma, self).__init__(name=name)
         self.initialized = False
 
-    def command(self, gamma, old_positions, new_positions, old_forces, new_forces, dynamic=True):
+    def command(self, gamma, old_energy, new_energy, old_forces, new_forces, c=0.1, tau1=1., tau2=0.2,
+                dynamic_gamma=True):
         if not self.initialized:
             new_gamma = gamma
             self.initialized = True
-        elif dynamic:
-            positions_diff = (old_positions - new_positions)
-            force_diff = -old_forces - (-new_forces)
-            denominator = np.linalg.norm(force_diff)
-            if np.isclose(denominator, 0.):
-                new_gamma = 0.
+        elif dynamic_gamma:
+            # backtracking line search,following this stack:
+            # https://math.stackexchange.com/questions/373868/optimal-step-size-in-gradient-descent/853139
+            if old_energy - new_energy >= c * gamma * np.linalg.norm(-old_forces)**2:
+                new_gamma = gamma * (1 + tau1)  # instead of keeping gamma constant, increase it by tau1
             else:
-                new_gamma = np.tensordot(positions_diff, force_diff) / denominator
+                new_gamma = gamma * tau2  # otherwise, decrease gamma by tau2
         else:
             new_gamma = gamma
         return {
-            'new_positions': new_positions,
-            'new_forces': new_forces,
+            'old_energy': new_energy,
+            'old_forces': new_forces,
             'new_gamma': new_gamma
         }
 
@@ -1372,7 +1373,7 @@ class TILDValidate(PrimitiveVertex):
         n_steps (int): How many MD steps to run for. (Default is 100.)
         thermalization_steps (int): Number of steps the system is thermalized for to reach equilibrium. (Default is
             10 steps.)
-        sampling_steps (int): Collect a 'sample' every 'sampling_steps' steps. (Default is 1, collect sample
+        sampling_steps (int): Collect a 'sampleGradientDesasdasd' every 'sampling_steps' steps. (Default is 1, collect sample
             for every MD step.
         convergence_check_steps (int): Check for convergence once every 'convergence_check_steps'. (Default is once
             every 10 steps.)
