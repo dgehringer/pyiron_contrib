@@ -2,7 +2,8 @@
 # Copyright (c) Max-Planck-Institut für Eisenforschung GmbH - Computational Materials Design (CM) Department
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
-from pyiron_contrib.protocol.compound.thermodynamic_integration import ProtoTILDPar
+from pyiron_atomistics import Project
+import pyiron_contrib
 from pyiron_base.master.generic import GenericMaster
 from pyiron_base.generic.datacontainer import DataContainer
 
@@ -36,6 +37,11 @@ class FreeEnergy(GenericMaster):
         self._force_constants = None
         self._del_harm_to_eam = None
         self._tild_job = None
+        self.run_method = None
+
+    def initialize(self):
+        self.run_method = _Run(project=self.project, structure=self.input.structure, potential=self.input.potential,
+                               temperature=self.input.temperature)
 
     @property
     def structure(self):
@@ -176,7 +182,7 @@ class FreeEnergy(GenericMaster):
         ref_job_b.potential = self.input.potential
         ref_job_b.save()
         # tild job
-        tild_job = tild_folder.create_job(ProtoTILDPar, "tild_job")
+        tild_job = tild_folder.create.job.ProtoTILDPar("tild_job")
         tild_job.input.temperature = self.input.temperature
         tild_job.input.ref_job_a_full_path = ref_job_a.path
         tild_job.input.ref_job_b_full_path = ref_job_b.path
@@ -193,12 +199,12 @@ class FreeEnergy(GenericMaster):
         tild_job.input.cutoff_factor = cutoff_factor
         tild_job.input.use_reflection = use_reflection
         tild_job.input.zero_k_energy = zero_k_energy
-        tild_job.server.queue = self.server.queue
-        tild_job.server.cores = self.server.cores
-        if self.server.run_time is not None:
-            tild_job.server.run_time = self.server.run_time
-        else:
-            tild_job.server.run_time = 43200
+        # tild_job.server.queue = self.server.queue
+        # tild_job.server.cores = self.server.cores
+        # if self.server.run_time is not None:
+        #     tild_job.server.run_time = self.server.run_time
+        # else:
+        #     tild_job.server.run_time = 43200
         tild_job.run()
         self._tild_job = tild_job
 
@@ -247,7 +253,7 @@ class FreeEnergy(GenericMaster):
         self.run_harmonic_to_eam_tild()
         while self._tild_job.status != "finished":
             sleep(30)
-        self.get_tild_output(plot_integrands=True)
+        self.get_tild_output(plot_integrands=False)
         self.get_G_per_atom()
         self.to_hdf(self.project_hdf5)
         print("DONE")
