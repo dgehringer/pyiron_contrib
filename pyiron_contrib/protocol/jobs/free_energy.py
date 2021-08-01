@@ -3,7 +3,7 @@
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
 from pyiron_contrib.protocol.compound.thermodynamic_integration import ProtoTILDPar
-from pyiron_base.master.generic import GenericMaster
+from pyiron_base.master.generic import GenericJob
 from pyiron_base.generic.datacontainer import DataContainer
 
 import numpy as np
@@ -18,7 +18,7 @@ from uncertainties.unumpy import uarray, nominal_values, std_devs
 KB = constants.physical_constants['Boltzmann constant in eV/K'][0]
 
 
-class FreeEnergy(GenericMaster):
+class FreeEnergy(GenericJob):
 
     def __init__(self, project, job_name):
         super(FreeEnergy, self).__init__(project, job_name)
@@ -58,7 +58,7 @@ class FreeEnergy(GenericMaster):
                 rmtree(f)
 
     def run_npt_md(self, pressure=0., temperature_damping_timescale=100., pressure_damping_timescale=1000.,
-                   n_ionic_steps=5e5, n_print=100, time_step=1., langevin=True):
+                   n_ionic_steps=5000, n_print=100, time_step=1., langevin=True):
         """
         Run an NPT-MD simulation using Lammps.
         """
@@ -130,7 +130,7 @@ class FreeEnergy(GenericMaster):
         phon_ref.structure = self._minimized_structure.copy()
         phon_ref.potential = self.input.potential
         phonopy_job = phon_ref.create_job(self.project.job_type.PhonopyJob, "phonopy_job")
-        phonopy_job.server.cores = self.server.cores
+        # phonopy_job.server.cores = self.server.cores
         phonopy_job.run()
         self._phonopy_job = phonopy_job
 
@@ -153,8 +153,8 @@ class FreeEnergy(GenericMaster):
         self.output.qh_free_energy = therm_prop.free_energies.flatten()
         self.output.force_constants = self._force_constants = self._phonopy_job.phonopy.force_constants
 
-    def run_harmonic_to_eam_tild(self, n_lambdas=15, lambda_bias=0.5, n_steps=2.5e5, thermalization_steps=5000,
-                                 sampling_steps=100, convergence_check_steps=1e4, fe_tol=0.5e-3, time_step=1.,
+    def run_harmonic_to_eam_tild(self, n_lambdas=5, lambda_bias=0.5, n_steps=3000, thermalization_steps=500,
+                                 sampling_steps=100, convergence_check_steps=1000, fe_tol=0.5e-3, time_step=1.,
                                  temperature_damping_timescale=100., overheat_fraction=2., cutoff_factor=0.5,
                                  use_reflection=False, zero_k_energy=0.):
         """
@@ -193,12 +193,12 @@ class FreeEnergy(GenericMaster):
         tild_job.input.cutoff_factor = cutoff_factor
         tild_job.input.use_reflection = use_reflection
         tild_job.input.zero_k_energy = zero_k_energy
-        tild_job.server.queue = self.server.queue
-        tild_job.server.cores = self.server.cores
-        if self.server.run_time is not None:
-            tild_job.server.run_time = self.server.run_time
-        else:
-            tild_job.server.run_time = 43200
+        # tild_job.server.queue = self.server.queue
+        # tild_job.server.cores = self.server.cores
+        # if self.server.run_time is not None:
+        #     tild_job.server.run_time = self.server.run_time
+        # else:
+        #     tild_job.server.run_time = 43200
         tild_job.run()
         self._tild_job = tild_job
 
