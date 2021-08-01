@@ -3,7 +3,7 @@
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
 from pyiron_contrib.protocol.compound.thermodynamic_integration import ProtoTILDPar
-from pyiron_base.master.generic import GenericMaster
+from pyiron_base.master.generic import GenericJob
 from pyiron_base.generic.datacontainer import DataContainer
 
 import numpy as np
@@ -18,7 +18,7 @@ from uncertainties.unumpy import uarray, nominal_values, std_devs
 KB = constants.physical_constants['Boltzmann constant in eV/K'][0]
 
 
-class FreeEnergy(GenericMaster):
+class FreeEnergy(GenericJob):
 
     def __init__(self, project, job_name):
         super(FreeEnergy, self).__init__(project, job_name)
