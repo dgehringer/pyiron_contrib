@@ -3,7 +3,7 @@
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
 from pyiron_contrib.protocol.compound.thermodynamic_integration import ProtoTILDPar
-from pyiron_base.master.generic import GenericJob
+from pyiron_base.master.generic import GenericMaster
 from pyiron_base.generic.datacontainer import DataContainer
 
 import numpy as np
@@ -18,7 +18,7 @@ from uncertainties.unumpy import uarray, nominal_values, std_devs
 KB = constants.physical_constants['Boltzmann constant in eV/K'][0]
 
 
-class FreeEnergy(GenericJob):
+class FreeEnergy(GenericMaster):
 
     def __init__(self, project, job_name):
         super(FreeEnergy, self).__init__(project, job_name)
@@ -130,6 +130,8 @@ class FreeEnergy(GenericJob):
         phon_ref.structure = self._minimized_structure.copy()
         phon_ref.potential = self.input.potential
         phonopy_job = phon_ref.create_job(self.project.job_type.PhonopyJob, "phonopy_job")
+        phonopy_job.input['interaction_range'] = \
+            np.amin(np.linalg.norm(self._minimized_structure.cell.array, axis=0)) - 1e-8
         # phonopy_job.server.cores = self.server.cores
         phonopy_job.run()
         self._phonopy_job = phonopy_job
