@@ -7,7 +7,7 @@ import numpy as np
 import warnings
 
 """
-Simetimes numpy and scipy are missing things, or I can't find them.
+Sometimes numpy and scipy are missing things, or I can't find them.
 """
 
 __author__ = "Liam Huber"
@@ -22,7 +22,7 @@ __date__ = "June 26, 2019"
 
 def welford_online(x, mean, std, k):
     """
-    Computes the cummulative mean and standard deviation.
+    Computes the cumulative mean and standard deviation.
 
     Note: The standard deviation calculated is for the population (ddof=0). For the sample (ddof=1) it would need to
     be extended.

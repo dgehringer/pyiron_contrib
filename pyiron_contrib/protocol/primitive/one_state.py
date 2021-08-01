@@ -1341,7 +1341,7 @@ class FEPExponential(PrimitiveVertex):
     Compute the free energy perturbation exponential difference.
     Note: If the calculation of exponential difference gives a RuntimeWarning, it means that the 2 systems
         between which the free energy is to be computed are very dissimilar, and the value of exponential_difference
-        is set to 0.
+        is set to nan.
     Input attributes:
         u_diff (float): The energy difference between system B and system A.
         delta_lambda (float): The delta for the lambdas for the two systems A and B.
@@ -1444,7 +1444,6 @@ class TILDPostProcess(PrimitiveVertex):
 
     def __init__(self, name=None):
         super(TILDPostProcess, self).__init__(name=name)
-        self.output.tild_free_energy_se = [np.nan]
 
     def command(self, lambda_pairs, tild_mean, tild_std, fep_exp_mean, fep_exp_std, temperature, n_samples):
         tild_fe_mean, tild_fe_std, tild_fe_se = self.get_tild_free_energy(lambda_pairs, tild_mean, tild_std,
@@ -1461,18 +1460,14 @@ class TILDPostProcess(PrimitiveVertex):
         }
 
     def get_tild_free_energy(self, lambda_pairs, tild_mean, tild_std, n_samples):
-        if np.nan not in [tild_mean, tild_std]:
-            lambdas = lambda_pairs[:, 0]
-            # calculate integral mean and std
-            mean, std = self._get_tild_integral_mean_std(lambdas=lambdas, mean=tild_mean, std=tild_std)
-            # also calculate the integral by passing in the tild_se. This way, the tild_se also propagates
-            # through the integral
-            tild_se = tild_std / np.sqrt(n_samples)
-            _, se = self._get_tild_integral_mean_std(lambdas=lambdas, mean=tild_mean, std=tild_se)
-        else:
-            mean = np.nan
-            std = np.nan
-            se = np.nan
+
+        lambdas = lambda_pairs[:, 0]
+        # calculate integral mean and std
+        mean, std = self._get_tild_integral_mean_std(lambdas=lambdas, mean=tild_mean, std=tild_std)
+        # also calculate the integral by passing in the tild_se. This way, the tild_se also propagates
+        # through the integral
+        tild_se = tild_std / np.sqrt(n_samples)
+        _, se = self._get_tild_integral_mean_std(lambdas=lambdas, mean=tild_mean, std=tild_se)
         return mean, std, se
 
     @staticmethod
