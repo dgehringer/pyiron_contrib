@@ -8,7 +8,8 @@ import os
 import posixpath
 
 from pyiron_atomistics.atomistics.structure.atoms import Atoms
-from pyiron_base import GenericParameters, GenericJob
+from pyiron_atomistics.atomistics.structure.has_structure import HasStructure
+from pyiron_base import GenericParameters, GenericJob, DataContainer, deprecate
 from pyiron_atomistics.vasp.structure import read_atoms
 
 __author__ = "Jan Janssen"
@@ -21,7 +22,7 @@ __status__ = "development"
 __date__ = "Sep 1, 2017"
 
 
-class RandSpg(GenericJob):
+class RandSpg(GenericJob, HasStructure):
     """
     RandSpg is a program that generates random crystals with specific space groups.
     The user inputs a specific composition and space group to be generated. The
@@ -39,19 +40,41 @@ class RandSpg(GenericJob):
         super(RandSpg, self).__init__(project, job_name)
         self.__version__ = "0.1"
         self.__name__ = "RandSpg"
-        self._lst_of_struct = []
+        self._lst_of_struct = DataContainer(table_name="structures")
         self.input = ExampleInput()
         self._executable_activate()
 
     @property
-    def list_of_structures(self):
-        return self._lst_of_struct
+    def structure_lst(self):
+        """
+        :class:`.DataContainer`: list of :class:`~.Atoms`
+        """
+        return self._structure_lst
 
+    @property
+    @deprecate("Use get_structure()/iter_structures()/structure_lst instead!")
+    def list_of_structures(self):
+        return list(self._lst_of_struct.items())
+
+    @deprecate("Use get_structure()/iter_structures()/structure_lst instead!")
     def list_structures(self):
         if self.status.finished:
-            return self._lst_of_struct
+            return self.list_of_structures
         else:
             return []
+
+    def _number_of_structures(self):
+        return len(self._lst_of_struct)
+
+    def _translate_frame(self, frame):
+        for i, name in enumerate(self._lst_of_struct):
+            if name == frame:
+                return i
+
+        raise KeyError(f"No structure named {frame} defined!")
+
+    def _get_structure(self, frame, wrap_atoms=True):
+        return self._lst_of_struct[frame]
 
     def set_input_to_read_only(self):
         """
@@ -81,12 +104,11 @@ class RandSpg(GenericJob):
         Args:
             file_name (str): output.log - optional
         """
-        self._lst_of_struct = [[file_name.replace('-', '_'),
-                                read_atoms(filename=posixpath.join(self.working_directory, dir_name, file_name))]
-                               for file_name in os.listdir(posixpath.join(self.working_directory, dir_name))]
-        for structure_name, structure in self._lst_of_struct:
-            with self.project_hdf5.open("output/structures/" + structure_name) as h5:
-                structure.to_hdf(h5)
+        self._lst_of_struct.clear()
+        dir_path = posixpath.join(self.working_directory, dir_name)
+        self._lst_of_struct.update({file_name.replace('-', '_'): read_atoms(filename=posixpath.join(dir_path, file_name))
+                                            for file_name in os.listdir(dir_path)})
+        self._lst_of_struct.to_hdf(self.project_hdf5.open("output"))
 
     def collect_logfiles(self):
         pass
@@ -114,12 +136,7 @@ class RandSpg(GenericJob):
         super(RandSpg, self).from_hdf(hdf=hdf, group_name=group_name)
         with self.project_hdf5.open("input") as hdf5_input:
             self.input.from_hdf(hdf5_input)
-        self._lst_of_struct = []
-        with self.project_hdf5.open("output/structures") as hdf5_output:
-            structure_names = hdf5_output.list_groups()
-        for group in structure_names:
-            with self.project_hdf5.open("output/structures/" + group) as hdf5_output:
-                self._lst_of_struct.append([group, Atoms().from_hdf(hdf5_output)])
+        self._lst_of_struct.from_hdf(self.project_hdf5.open("output"))
 
 
 class ExampleInput(GenericParameters):
