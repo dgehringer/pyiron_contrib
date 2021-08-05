@@ -155,8 +155,8 @@ class FreeEnergy(GenericJob):
         self.output.qh_free_energy = therm_prop.free_energies.flatten()
         self.output.force_constants = self._force_constants = self._phonopy_job.phonopy.force_constants
 
-    def run_harmonic_to_eam_tild(self, n_lambdas=5, lambda_bias=0.5, n_steps=3000, thermalization_steps=500,
-                                 sampling_steps=100, convergence_check_steps=1000, fe_tol=0.5e-3, time_step=1.,
+    def run_harmonic_to_eam_tild(self, n_lambdas=5, lambda_bias=0.5, n_steps=300, thermalization_steps=50,
+                                 sampling_steps=10, convergence_check_steps=100, fe_tol=0.5e-3, time_step=1.,
                                  temperature_damping_timescale=100., overheat_fraction=2., cutoff_factor=0.5,
                                  use_reflection=False, zero_k_energy=0.):
         """
