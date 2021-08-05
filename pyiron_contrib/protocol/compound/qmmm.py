@@ -111,7 +111,7 @@ class QMMM(CompoundVertex):
 
         id_.gamma0 = 0.1
         id_.fix_com = True
-        id_.use_adagrad = False
+        id_.output_displacements = True
 
     def define_vertices(self):
         # Components
@@ -142,6 +142,7 @@ class QMMM(CompoundVertex):
             g.partition,
             g.create_job_mm,
             g.create_job_qm,
+            g.create_job_small,
             g.check_steps, 'false',
             g.calc_static_mm,
             g.calc_static_qm,
@@ -249,7 +250,7 @@ class QMMM(CompoundVertex):
         g.gradient_descent_mm.input.mask = gp.partition.output.domain_ids[-1]['except_core']
         g.gradient_descent_mm.input.gamma0 = ip.gamma0
         g.gradient_descent_mm.input.fix_com = ip.fix_com
-        g.gradient_descent_mm.input.use_adagrad = ip.use_adagrad
+        g.gradient_descent_mm.input.output_displacements = ip.output_displacements
 
         # gradient_descent_qm
         g.gradient_descent_qm.input.forces = gp.calc_static_qm.output.forces[-1]
@@ -258,8 +259,7 @@ class QMMM(CompoundVertex):
         g.gradient_descent_qm.input.masses = gp.partition.output.qm_structure[-1].get_masses
         g.gradient_descent_qm.input.mask = gp.partition.output.domain_ids_qm[-1]['only_core']
         g.gradient_descent_qm.input.gamma0 = ip.gamma0
-        g.gradient_descent_qm.input.fix_com = ip.fix_com
-        g.gradient_descent_qm.input.use_adagrad = ip.use_adagrad
+        g.gradient_descent_qm.input.output_displacements = ip.output_displacements
 
         # update_core_mm
         g.update_core_mm.input.default.target = gp.partition.output.mm_full_structure[-1].positions
@@ -607,7 +607,7 @@ class PartitionStructure(PrimitiveVertex):
         indices = [seed_ids]
         current_shell_ids = seed_ids
         for _ in range(n_shells):
-            neighbors = structure.get_neighbors(id_list=current_shell_ids, cutoff=shell_cutoff)
+            neighbors = structure.get_neighbors(id_list=current_shell_ids, cutoff_radius=shell_cutoff)
             new_ids = np.setdiff1d(
                 np.unique(np.concatenate(neighbors.indices)),
                 np.concatenate(indices)
