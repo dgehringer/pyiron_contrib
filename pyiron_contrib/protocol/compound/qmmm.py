@@ -6,7 +6,8 @@ from __future__ import print_function
 
 from pyiron_contrib.protocol.generic import PrimitiveVertex, CompoundVertex, Protocol
 from pyiron_contrib.protocol.utils import ensure_iterable
-from pyiron_contrib.protocol.primitive.one_state import ExternalHamiltonian, Counter, Norm, Max, GradientDescent
+from pyiron_contrib.protocol.primitive.one_state import ExternalHamiltonian, Counter, Norm, Max, GradientDescent, \
+    CreateSubJobs
 from pyiron_contrib.protocol.primitive.two_state import IsGEq, IsLEq
 from pyiron_contrib.protocol.utils import Pointer, IODictionary
 import numpy as np
@@ -96,6 +97,7 @@ class QMMM(CompoundVertex):
         super(QMMM, self).__init__(**kwargs)
 
         id_ = self.input.default
+        id_.n_images = 1
         id_.domain_ids = None
         id_.seed_ids = None
         id_.shell_cutoff = None
@@ -115,6 +117,9 @@ class QMMM(CompoundVertex):
         # Components
         g = self.graph
         g.partition = PartitionStructure()
+        g.create_job_mm = CreateSubJobs()
+        g.create_job_qm = CreateSubJobs()
+        g.create_job_small = CreateSubJobs()
         g.calc_static_mm = ExternalHamiltonian()
         g.calc_static_qm = ExternalHamiltonian()
         g.clock = Counter()
@@ -135,6 +140,8 @@ class QMMM(CompoundVertex):
         g = self.graph
         g.make_pipeline(
             g.partition,
+            g.create_job_mm,
+            g.create_job_qm,
             g.check_steps, 'false',
             g.calc_static_mm,
             g.calc_static_qm,
@@ -162,6 +169,7 @@ class QMMM(CompoundVertex):
         ip = Pointer(self.input)
         g = self.graph
 
+        # partition
         g.partition.input.structure = ip.structure
         g.partition.input.domain_ids = ip.domain_ids
         g.partition.input.seed_ids = ip.seed_ids
@@ -172,44 +180,68 @@ class QMMM(CompoundVertex):
         g.partition.input.filler_width = ip.filler_width
         g.partition.input.seed_species = ip.seed_species
 
-        g.calc_static_mm.input.ref_job_full_path = ip.mm_ref_job_full_path
-        g.calc_static_mm.input.structure = gp.partition.output.mm_full_structure[-1]
+        # create_job_mm
+        g.create_job_mm.input.n_images = ip.n_images
+        g.create_job_mm.input.ref_job_full_path = ip.mm_ref_job_full_path
+        g.create_job_mm.input.structure = gp.partition.output.mm_full_structure[-1]
+
+        # create_job_small
+        g.create_job_small.input.n_images = ip.n_images
+        g.create_job_small.input.ref_job_full_path = ip.mm_ref_job_full_path
+        g.create_job_small.input.structure = gp.partition.output.mm_small_structure[-1]
+
+        # create_job_small
+        g.create_job_qm.input.n_images = ip.n_images
+        g.create_job_qm.input.ref_job_full_path = ip.qm_ref_job_full_path
+        g.create_job_qm.input.structure = gp.partition.output.qm_structure[-1]
+
+        # calc_static_mm
+        g.calc_static_mm.input.job_project_path = gp.create_job_mm.output.jobs_project_path[-1][-1]
+        g.calc_static_mm.input.job_name = gp.create_job_mm.output.jobs_names[-1][-1]
         g.calc_static_mm.input.default.positions = gp.partition.output.mm_full_structure[-1].positions
         g.calc_static_mm.input.positions = gp.update_core_mm.output.positions[-1]
 
-        g.calc_static_small.input.ref_job_full_path = ip.mm_ref_job_full_path
-        g.calc_static_small.input.structure = gp.partition.output.mm_small_structure[-1]
-        g.calc_static_small.input.default.positions = gp.partition.output.mm_small_structure[-1].positions
-        g.calc_static_small.input.positions = gp.update_buffer_qm.output.positions[-1]
+        # calc_static_small
+        g.calc_static_small.input.job_project_path = gp.create_job_small.output.jobs_project_path[-1][-1]
+        g.calc_static_small.input.job_name = gp.create_job_small.output.jobs_names[-1][-1]
+        g.calc_static_small.input.default.positions = gp.partition.output.mm_full_structure[-1].positions
+        g.calc_static_small.input.positions = gp.update_core_mm.output.positions[-1]
 
-        g.calc_static_qm.input.ref_job_full_path = ip.qm_ref_job_full_path
-        g.calc_static_qm.input.structure = gp.partition.output.qm_structure[-1]
+        # calc_static_qm
+        g.calc_static_qm.input.job_project_path = gp.create_job_qm.output.jobs_project_path[-1][-1]
+        g.calc_static_qm.input.job_name = gp.create_job_qm.output.jobs_names[-1][-1]
         g.calc_static_qm.input.default.positions = gp.partition.output.qm_structure[-1].positions
         g.calc_static_qm.input.positions = gp.update_buffer_qm.output.positions[-1]
 
+        # check_steps
         g.check_steps.input.target = gp.clock.output.n_counts[-1]
         g.check_steps.input.threshold = ip.n_steps
 
+        # force_norm_mm
         g.force_norm_mm.input.x = gp.calc_static_mm.output.forces[-1][
             gp.partition.output.domain_ids[-1]['except_core']
         ]
         g.force_norm_mm.input.ord = 2
         g.force_norm_mm.input.axis = -1
 
+        # max_force
         g.max_force_mm.input.a = gp.force_norm_mm.output.n[-1]
         g.check_force_mm.input.target = gp.max_force_mm.output.amax[-1]
         g.check_force_mm.input.threshold = ip.f_tol
 
+        # force_norm_qm
         g.force_norm_qm.input.x = gp.calc_static_qm.output.forces[-1][
             gp.partition.output.domain_ids_qm[-1]['only_core']
         ]
         g.force_norm_qm.input.ord = 2
         g.force_norm_qm.input.axis = -1
 
+        # max_force_qm
         g.max_force_qm.input.a = gp.force_norm_qm.output.n[-1]
         g.check_force_qm.input.target = gp.max_force_qm.output.amax[-1]
         g.check_force_qm.input.threshold = ip.f_tol
 
+        # gradient_descent_mm
         g.gradient_descent_mm.input.forces = gp.calc_static_mm.output.forces[-1]
         g.gradient_descent_mm.input.default.positions = gp.partition.output.mm_full_structure[-1].positions
         g.gradient_descent_mm.input.positions = gp.update_core_mm.output.positions[-1]
@@ -219,6 +251,7 @@ class QMMM(CompoundVertex):
         g.gradient_descent_mm.input.fix_com = ip.fix_com
         g.gradient_descent_mm.input.use_adagrad = ip.use_adagrad
 
+        # gradient_descent_qm
         g.gradient_descent_qm.input.forces = gp.calc_static_qm.output.forces[-1]
         g.gradient_descent_qm.input.default.positions = gp.partition.output.qm_structure[-1].positions
         g.gradient_descent_qm.input.positions = gp.update_buffer_qm.output.positions[-1]
@@ -228,6 +261,7 @@ class QMMM(CompoundVertex):
         g.gradient_descent_qm.input.fix_com = ip.fix_com
         g.gradient_descent_qm.input.use_adagrad = ip.use_adagrad
 
+        # update_core_mm
         g.update_core_mm.input.default.target = gp.partition.output.mm_full_structure[-1].positions
         g.update_core_mm.input.target = gp.gradient_descent_mm.output.positions[-1]
         g.update_core_mm.input.target_mask = [
@@ -240,6 +274,7 @@ class QMMM(CompoundVertex):
             gp.partition.output.domain_ids_qm[-1]['core']
         ]
 
+        # update_buffer_qm
         g.update_buffer_qm.input.default.target = gp.partition.output.qm_structure[-1].positions
         g.update_buffer_qm.input.target = gp.gradient_descent_qm.output.positions[-1]
         g.update_buffer_qm.input.target_mask = gp.partition.output.domain_ids_qm[-1]['buffer']
