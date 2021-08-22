@@ -8,6 +8,7 @@ from pyiron_contrib.protocol.utils import InputDictionary, Pointer
 import numpy as np
 import time
 from abc import abstractmethod
+import psutil
 from multiprocessing import Process, Manager
 from pyiron_atomistics.vasp.interactive import VaspInteractive
 from pyiron_atomistics.sphinx.interactive import SphinxInteractive
@@ -168,13 +169,21 @@ class ParallelList(ListVertex):
 
         sleep_time = ~self.sleep_time
 
+        def run_child(n, return_dict, n_child, logger):
+            proc = psutil.Process()  # get self pid
+            available_cpus = proc.cpu_affinity()
+            proc.cpu_affinity([available_cpus[n]])
+            logger.info("child {} running on core {}".format(n, [available_cpus[n]]))
+            return_dict[n] = n_child.execute_parallel()
+
         all_child_output = Manager().dict()
+
         jobs = []
         for i, child in enumerate(self.children):
-            job = Process(target=child.execute_parallel, args=(i, all_child_output))
+            job = Process(target=run_child, args=(i, all_child_output, child, self.logger))
+            jobs.append(job)
             job.start()
             time.sleep(sleep_time)
-            jobs.append(job)
 
         for job in jobs:
             job.join()
