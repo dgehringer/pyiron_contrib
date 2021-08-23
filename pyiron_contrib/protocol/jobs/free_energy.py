@@ -42,21 +42,26 @@ class FreeEnergy(GenericJob):
         self.input.md_steps = 5000
         self.input.md_sampling_steps = 10
         self.input.md_thermalization_steps = 100
+        self.input.md_n_bins = 100
         # tild inputs
-        self.input.spring_constant = 2.
+        self.input.spring_constant = None
         self.input.tild_n_lambdas = 5
         self.input.tild_lambda_bias = 0.5
         self.input.tild_steps = 300
         self.input.tild_sampling_steps = 10
         self.input.tild_thermalization_steps = 50
-        self.input.tild_convergence_check_steps = 100
+        self.input.tild_convergence_check_steps = 150
         self.input.tild_fe_tol = 1e-3
         self.input.cutoff_factor = 0.5
         self.input.use_reflection = False
         # internal
+        self._mass = None
+        self._n_atoms = None
+        self._thermalize_snapshots = None
         self._npt_job = None
         self._minimized_structure = None
         self._del_harm_to_eam = None
+        self._phonopy_job = None
         self._tild_job = None
 
     @property
@@ -111,9 +116,8 @@ class FreeEnergy(GenericJob):
         else:
             self._cleanup_job(self._npt_job)
         print("Minimizing NPT-MD structure...")
-        thermalize_snapshots = int((self.input.md_steps - self.input.md_thermalization_steps)
-                                   / self.input.md_sampling_steps)
-        average_cell = np.mean(self._npt_job.output.cells[thermalize_snapshots:-1], axis=0)
+        self._thermalize_snapshots = int(self.input.md_thermalization_steps / self.input.md_sampling_steps)
+        average_cell = np.mean(self._npt_job.output.cells[self._thermalize_snapshots:-1], axis=0)
         npt_md_folder = self.project.create_group("npt_md")
         min_npt_job = npt_md_folder.create.job.Lammps("min_npt_job")
         min_npt_job.structure = self.input.structure.copy()
@@ -125,19 +129,20 @@ class FreeEnergy(GenericJob):
         self._cleanup_job(min_npt_job)
         self.output.minimized_structure = self._minimized_structure = min_npt_job.get_structure()
 
-    def get_A_to_G_correction(self, thermalize_snapshots=20, n_bins=100, plot=True):
+    def get_A_to_G_correction(self, plot=True):
         """
         Returns the Helmholtz to Gibbs correction as described in https://doi.org/10.1103/PhysRevB.97.054102,
             section II D.
         """
+
         def gaus(x, a, mu, sigma):
             return a * np.exp(-(x - mu) ** 2 / (2 * sigma ** 2))
 
         if self._npt_job is None:
             raise ValueError("`run_npt_md()´ needs to be called before `get_A_to_G_correction()´")
         print("Getting Helmholtz to Gibbs correction...")
-        volumes = self._npt_job.output.volume[thermalize_snapshots:-1]
-        pd, bins = np.histogram(volumes, bins=n_bins, density=True)
+        volumes = self._npt_job.output.volume[self._thermalize_snapshots:-1]
+        pd, bins = np.histogram(volumes, bins=self.input.md_n_bins, density=True)
         mu, sigma = norm.fit(volumes)
         bins = (bins[1:] + bins[:-1]) / 2
         popt, pcov = curve_fit(gaus, bins, pd, p0=[1, mu, sigma])
@@ -147,10 +152,55 @@ class FreeEnergy(GenericJob):
             plt.plot(bins, pd / pd.sum(), label='raw')
             plt.plot(bins, best_fit_line, label='fit')
             plt.xlabel('Volumes [$\AA^3$]')
-            plt.xlabel('Probability density')
+            plt.ylabel('Probability density')
             plt.show()
         normalized_probability = best_fit_line.max()
         self.output.fe_A_to_G_correction = KB * self.input.temperature * np.log(normalized_probability)
+
+    def get_center_of_mass_correction(self):
+        print("Getting center of mass correction...")
+        self._mass = self.output.minimized_structure.get_masses()[0]
+        Lambda = 17.458218 / np.sqrt(self.input.temperature * self._mass)
+        volume = self.output.minimized_structure.get_volume()
+        self._n_atoms = self.output.minimized_structure.get_number_of_atoms()
+        self.output.fe_com = -KB * self.input.temperature * (np.log(volume / (self._n_atoms * Lambda ** 3)) +
+                                                             1.5 * np.log(self._n_atoms))
+
+    def run_phonopy(self):
+        """
+        Run Phonopy on the minimized NPT-MD structure.
+        """
+        if not self._minimized_structure:
+            raise ValueError("`minimized structure´ is not set. Please run `get_npt_md_structure()´")
+        print("Running phonopy...")
+        phon_folder = self.project.create_group("phonons")
+        phon_ref = phon_folder.create.job.Lammps("phonon_ref_job")
+        phon_ref.structure = self._minimized_structure.copy()
+        phon_ref.potential = self.input.potential
+        phonopy_job = phon_ref.create_job(self.project.job_type.PhonopyJob, "phonopy_job")
+        phonopy_job.input['interaction_range'] = \
+            np.amin(np.linalg.norm(self._minimized_structure.cell.array, axis=0)) - 1e-8
+        phonopy_job.run()
+        self._phonopy_job = phonopy_job
+
+    def get_phonopy_output(self):
+        """
+        Return the force constants matrix and the analytical Quasi-Harmonic free energy from the Phonopy job.
+        """
+        if self._phonopy_job is None:
+            raise ValueError("`run_phonopy()´ needs to be called before `get_phonopy_output()´")
+        elif self._phonopy_job.status != "finished":
+            raise ValueError("the Phonopy job is not finished")
+        else:
+            self._cleanup_job(self._phonopy_job)
+        print("Getting force constants and reference QH free energy...")
+        try:
+            therm_prop = self._phonopy_job.get_thermal_properties(temperatures=self.input.temperature)
+        except AttributeError:
+            self.output.phonopy_job = self.project.load(self._phonopy_job.job_name)
+            therm_prop = self._phonopy_job.get_thermal_properties(temperatures=self.input.temperature)
+        self.output.fe_quantum_harm = therm_prop.free_energies.flatten()
+        self.output.force_constants = self._phonopy_job.phonopy.force_constants
 
     def get_classical_harmonic_free_energy(self):
         """
@@ -161,22 +211,24 @@ class FreeEnergy(GenericJob):
         print("Getting reference classical harmonic free energy...")
         ROOT_EV_PER_ANGSTROM_SQUARE_PER_AMU_IN_S = 9.82269385e13
         temperature = np.clip(self.input.temperature, 1e-6, np.inf)
-        mass = self.input.structure.get_masses()[0]
-        n_atoms = len(self.input.structure)
-        hbar_omega = HBAR * np.sqrt(self.input.spring_constant / mass) * ROOT_EV_PER_ANGSTROM_SQUARE_PER_AMU_IN_S
-        self.output.fe_classical_harmonic = -3 * n_atoms * KB * temperature * np.log((KB * temperature) / hbar_omega)
+        hbar_omega = HBAR * np.sqrt(self.input.spring_constant / self._mass) * ROOT_EV_PER_ANGSTROM_SQUARE_PER_AMU_IN_S
+        self.output.fe_classical_harm = -3 * self._n_atoms * KB * temperature * np.log((KB * temperature) / hbar_omega)
 
     def run_harmonic_to_eam_tild(self, ):
         """
         Run TILD between the non-interacting harmonic system and the interacting system.
         """
+        if self.input.spring_constant is not None:
+            force_constants = self.input.spring_constant
+        else:
+            force_constants = self.output.force_constants
         print("Running TILD...")
         tild_folder = self.project.create_group("tild")
         # reference job A -> HessianJob
         ref_job_a = tild_folder.create.job.HessianJob("ref_job_a")
         ref_job_a.structure = self._minimized_structure.copy()
         ref_job_a.set_reference_structure(self._minimized_structure.copy())
-        ref_job_a.set_force_constants(self.input.spring_constant)
+        ref_job_a.set_force_constants(force_constants)
         ref_job_a.save()
         # reference job B -> Lammps
         ref_job_b = tild_folder.create.job.Lammps("ref_job_b")
@@ -229,14 +281,18 @@ class FreeEnergy(GenericJob):
         """
         Return the anharmonic free energy per atom at the input temperature for the input structure.
         """
+        if self.input.spring_constant is not None:
+            fe_ref = self.output.fe_classical_harm
+        else:
+            fe_ref = self.output.fe_quantum_harm
         if self._del_harm_to_eam is None:
             raise ValueError("`get_tild_output()´ needs to be called before `get_G_per_atom()´")
         fe_del_harm_to_eam = uarray(self.output.fe_del_harm_to_eam, self.output.fe_del_harm_to_eam_se)
-        anharm_fe = self.output.fe_classical_harmonic + self.output.minimized_energy + \
-                    fe_del_harm_to_eam + self.output.fe_A_to_G_correction
-        anharm_fe_pa = anharm_fe / len(self.input.structure)
-        self.output.fe_G = nominal_values(anharm_fe_pa).flatten()[0]
-        self.output.fe_G_se = std_devs(anharm_fe_pa).flatten()[0]
+        anharm_fe = fe_ref + self.output.minimized_energy + fe_del_harm_to_eam + self.output.fe_A_to_G_correction + \
+                    self.output.fe_com
+        anharm_fe_pa = nominal_values(anharm_fe).flatten()[0] / self._n_atoms
+        self.output.fe_G_per_atom = anharm_fe_pa
+        self.output.fe_G_per_atom_se = std_devs(anharm_fe).flatten()[0]
 
     def run_static(self):
         """
@@ -245,7 +301,12 @@ class FreeEnergy(GenericJob):
         self.run_npt_md()
         self.get_npt_md_structure()
         self.get_A_to_G_correction()
-        self.get_classical_harmonic_free_energy()
+        self.get_center_of_mass_correction()
+        if self.input.spring_constant is not None:
+            self.get_classical_harmonic_free_energy()
+        else:
+            self.run_phonopy()
+            self.get_phonopy_output()
         self.run_harmonic_to_eam_tild()
         self.get_tild_output(plot_integrands=True)
         self.get_G_per_atom()
