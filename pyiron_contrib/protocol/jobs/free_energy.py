@@ -35,6 +35,7 @@ class FreeEnergy(GenericJob):
         self.input.temperature = None
         self.input.structure = None
         self.input.potential = None
+        self.input.reference = 'classical'
         # shared inputs
         self.input.temperature_damping_timescale = 100.
         self.input.time_step = 1.
@@ -44,7 +45,6 @@ class FreeEnergy(GenericJob):
         self.input.md_thermalization_steps = 100
         self.input.md_n_bins = 100
         # tild inputs
-        self.input.spring_constant = None
         self.input.tild_n_lambdas = 5
         self.input.tild_lambda_bias = 0.5
         self.input.tild_steps = 300
@@ -96,26 +96,27 @@ class FreeEnergy(GenericJob):
         npt_job.run()
         self._npt_job = npt_job
 
+    @staticmethod
+    def gaus(x, a, mu, sigma):
+        return a * np.exp(-(x - mu) ** 2 / (2 * sigma ** 2))
+
     def run_md_analysis(self, plot=True):
         """
         Returns the Helmholtz to Gibbs correction as described in https://doi.org/10.1103/PhysRevB.97.054102,
             section II D.
         """
-
-        def gaus(x, a, mu, sigma):
-            return a * np.exp(-(x - mu) ** 2 / (2 * sigma ** 2))
-
         if self._npt_job is None:
             raise ValueError("`run_npt_md()´ needs to be called before `get_A_to_G_correction()´")
         print("Running MD analysis and getting Helmholtz to Gibbs correction...")
         self._thermalize_snapshots = int(self.input.md_thermalization_steps / self.input.md_sampling_steps)
         volumes = self._npt_job.output.volume[self._thermalize_snapshots:-1]
         pd, bins = np.histogram(volumes, bins=self.input.md_n_bins, density=True)
+        pd /= pd.sum()
         mu, sigma = norm.fit(volumes)
         bins = (bins[1:] + bins[:-1]) / 2
-        popt, pcov = curve_fit(gaus, bins, pd, p0=[1, mu, sigma])
+        popt, pcov = curve_fit(self.gaus, bins, pd, p0=[1, mu, sigma])
         fine_bins = np.linspace(bins[0], bins[-1], 10000)
-        best_fit_line = gaus(fine_bins, *popt)
+        best_fit_line = self.gaus(fine_bins, *popt)
         normalized_probability = best_fit_line.max()
         if plot:
             plt.plot(bins, pd / pd.sum(), label='raw')
@@ -126,6 +127,17 @@ class FreeEnergy(GenericJob):
         self.output.optimum_volume = fine_bins[np.argmax(best_fit_line)]
         self.output.optimum_cell = np.cbrt([self.output.optimum_volume]) * np.eye(3)
         self.output.fe_A_to_G_correction = KB * self.input.temperature * np.log(normalized_probability)
+
+    def get_spring_constant(self):
+        print("Getting spring constant...")
+        total_displacement = self._npt_job.output.total_displacements[self._thermalize_snapshots:-1]
+        msd = [np.mean(np.sum(d ** 2, axis=1), axis=0) for d in total_displacement]
+        pd, bins = np.histogram(msd, bins=self.input.md_n_bins, density=True)
+        pd /= pd.sum()
+        mu, sigma = norm.fit(msd)
+        bins = (bins[1:] + bins[:-1]) / 2
+        popt, pcov = curve_fit(self.gaus, bins, pd, p0=[1, mu, sigma])
+        self.output.spring_constant = 3 * KB * self.input.temperature / np.sum(bins * self.gaus(bins, *popt))
 
     def minimize_structure(self):
         """
@@ -204,17 +216,19 @@ class FreeEnergy(GenericJob):
         print("Getting reference classical harmonic free energy...")
         ROOT_EV_PER_ANGSTROM_SQUARE_PER_AMU_IN_S = 9.82269385e13
         temperature = np.clip(self.input.temperature, 1e-6, np.inf)
-        hbar_omega = HBAR * np.sqrt(self.input.spring_constant / self._mass) * ROOT_EV_PER_ANGSTROM_SQUARE_PER_AMU_IN_S
+        hbar_omega = HBAR * np.sqrt(self.output.spring_constant / self._mass) * ROOT_EV_PER_ANGSTROM_SQUARE_PER_AMU_IN_S
         self.output.fe_classical_harm = -3 * self._n_atoms * KB * temperature * np.log((KB * temperature) / hbar_omega)
 
-    def run_harmonic_to_eam_tild(self, ):
+    def run_reference_to_eam_tild(self, ):
         """
         Run TILD between the non-interacting harmonic system and the interacting system.
         """
-        if self.input.spring_constant is not None:
-            force_constants = self.input.spring_constant
-        else:
+        if self.input.reference == 'classical':
+            force_constants = self.output.spring_constant
+        elif self.input.reference == 'quantum':
             force_constants = self.output.force_constants
+        else:
+            raise ValueError
         print("Running TILD...")
         tild_folder = self.project.create_group("tild")
         # reference job A -> HessianJob
@@ -274,10 +288,12 @@ class FreeEnergy(GenericJob):
         """
         Return the anharmonic free energy per atom at the input temperature for the input structure.
         """
-        if self.input.spring_constant is not None:
+        if self.input.reference == 'classical':
             fe_ref = self.output.fe_classical_harm
-        else:
+        elif self.input.reference == 'quantum':
             fe_ref = self.output.fe_quantum_harm
+        else:
+            raise ValueError
         if self._del_harm_to_eam is None:
             raise ValueError("`get_tild_output()´ needs to be called before `get_G_per_atom()´")
         fe_del_harm_to_eam = uarray(self.output.fe_del_harm_to_eam, self.output.fe_del_harm_to_eam_se)
@@ -293,14 +309,17 @@ class FreeEnergy(GenericJob):
         """
         self.run_npt_md()
         self.run_md_analysis()
+        self.get_spring_constant()
         self.minimize_structure()
         self.get_center_of_mass_correction()
-        if self.input.spring_constant is not None:
+        if self.input.reference == 'classical':
             self.get_classical_harmonic_free_energy()
-        else:
+        elif self.input.reference == 'quantum':
             self.run_phonopy()
             self.get_phonopy_output()
-        self.run_harmonic_to_eam_tild()
+        else:
+            raise ValueError
+        self.run_reference_to_eam_tild()
         self.get_tild_output(plot_integrands=True)
         self.get_G_per_atom()
         self.to_hdf(self.project_hdf5)
