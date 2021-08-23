@@ -309,10 +309,10 @@ class FreeEnergy(GenericJob):
         """
         self.run_npt_md()
         self.run_md_analysis()
-        self.get_spring_constant()
         self.minimize_structure()
         self.get_center_of_mass_correction()
         if self.input.reference == 'classical':
+            self.get_spring_constant()
             self.get_classical_harmonic_free_energy()
         elif self.input.reference == 'quantum':
             self.run_phonopy()
