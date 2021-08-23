@@ -64,14 +64,6 @@ class FreeEnergy(GenericJob):
         self._phonopy_job = None
         self._tild_job = None
 
-    @property
-    def structure(self):
-        return self.input.structure
-
-    @structure.setter
-    def structure(self, basis):
-        self.input.structure = basis
-
     @staticmethod
     def _cleanup_job(job):
         """
@@ -127,7 +119,7 @@ class FreeEnergy(GenericJob):
         min_npt_job.run()
         self.output.minimized_energy = min_npt_job.output.energy_pot[-1]
         self._cleanup_job(min_npt_job)
-        self.output.minimized_structure = self._minimized_structure = min_npt_job.get_structure()
+        self.output.minimized_structure = min_npt_job.get_structure()
 
     def get_A_to_G_correction(self, plot=True):
         """
@@ -226,13 +218,13 @@ class FreeEnergy(GenericJob):
         tild_folder = self.project.create_group("tild")
         # reference job A -> HessianJob
         ref_job_a = tild_folder.create.job.HessianJob("ref_job_a")
-        ref_job_a.structure = self._minimized_structure.copy()
-        ref_job_a.set_reference_structure(self._minimized_structure.copy())
+        ref_job_a.structure = self.output.minimized_structure.copy()
+        ref_job_a.set_reference_structure(self.output.minimized_structure.copy())
         ref_job_a.set_force_constants(force_constants)
         ref_job_a.save()
         # reference job B -> Lammps
         ref_job_b = tild_folder.create.job.Lammps("ref_job_b")
-        ref_job_b.structure = self._minimized_structure.copy()
+        ref_job_b.structure = self.output.minimized_structure.copy()
         ref_job_b.potential = self.input.potential
         ref_job_b.save()
         # tild job
