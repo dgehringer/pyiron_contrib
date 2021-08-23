@@ -96,7 +96,38 @@ class FreeEnergy(GenericJob):
         npt_job.run()
         self._npt_job = npt_job
 
-    def get_npt_md_structure(self):
+    def run_md_analysis(self, plot=True):
+        """
+        Returns the Helmholtz to Gibbs correction as described in https://doi.org/10.1103/PhysRevB.97.054102,
+            section II D.
+        """
+
+        def gaus(x, a, mu, sigma):
+            return a * np.exp(-(x - mu) ** 2 / (2 * sigma ** 2))
+
+        if self._npt_job is None:
+            raise ValueError("`run_npt_md()´ needs to be called before `get_A_to_G_correction()´")
+        print("Running MD analysis and getting Helmholtz to Gibbs correction...")
+        self._thermalize_snapshots = int(self.input.md_thermalization_steps / self.input.md_sampling_steps)
+        volumes = self._npt_job.output.volume[self._thermalize_snapshots:-1]
+        pd, bins = np.histogram(volumes, bins=self.input.md_n_bins, density=True)
+        mu, sigma = norm.fit(volumes)
+        bins = (bins[1:] + bins[:-1]) / 2
+        popt, pcov = curve_fit(gaus, bins, pd, p0=[1, mu, sigma])
+        fine_bins = np.linspace(bins[0], bins[-1], 10000)
+        best_fit_line = gaus(fine_bins, *popt)
+        normalized_probability = best_fit_line.max()
+        if plot:
+            plt.plot(bins, pd / pd.sum(), label='raw')
+            plt.plot(fine_bins, best_fit_line, label='fit')
+            plt.xlabel('Volumes [$\AA^3$]')
+            plt.ylabel('Probability density')
+            plt.show()
+        self.output.optimum_volume = fine_bins[np.argmax(best_fit_line)]
+        self.output.optimum_cell = np.cbrt([self.output.optimum_volume]) * np.eye(3)
+        self.output.fe_A_to_G_correction = KB * self.input.temperature * np.log(normalized_probability)
+
+    def minimize_structure(self):
         """
         Returns a minimized structure with cell and atom positions corresponding to the average structure from
             the NPT-MD simulation.
@@ -108,46 +139,16 @@ class FreeEnergy(GenericJob):
         else:
             self._cleanup_job(self._npt_job)
         print("Minimizing NPT-MD structure...")
-        self._thermalize_snapshots = int(self.input.md_thermalization_steps / self.input.md_sampling_steps)
-        average_cell = np.mean(self._npt_job.output.cells[self._thermalize_snapshots:-1], axis=0)
         npt_md_folder = self.project.create_group("npt_md")
         min_npt_job = npt_md_folder.create.job.Lammps("min_npt_job")
         min_npt_job.structure = self.input.structure.copy()
-        min_npt_job.structure.cell = average_cell
+        min_npt_job.structure.cell = self.output.optimum_cell
         min_npt_job.potential = self.input.potential
         min_npt_job.calc_minimize(pressure=None)
         min_npt_job.run()
         self.output.minimized_energy = min_npt_job.output.energy_pot[-1]
         self._cleanup_job(min_npt_job)
         self.output.minimized_structure = min_npt_job.get_structure()
-
-    def get_A_to_G_correction(self, plot=True):
-        """
-        Returns the Helmholtz to Gibbs correction as described in https://doi.org/10.1103/PhysRevB.97.054102,
-            section II D.
-        """
-
-        def gaus(x, a, mu, sigma):
-            return a * np.exp(-(x - mu) ** 2 / (2 * sigma ** 2))
-
-        if self._npt_job is None:
-            raise ValueError("`run_npt_md()´ needs to be called before `get_A_to_G_correction()´")
-        print("Getting Helmholtz to Gibbs correction...")
-        volumes = self._npt_job.output.volume[self._thermalize_snapshots:-1]
-        pd, bins = np.histogram(volumes, bins=self.input.md_n_bins, density=True)
-        mu, sigma = norm.fit(volumes)
-        bins = (bins[1:] + bins[:-1]) / 2
-        popt, pcov = curve_fit(gaus, bins, pd, p0=[1, mu, sigma])
-        best_fit_line = gaus(bins, *popt)
-        best_fit_line /= best_fit_line.sum()
-        if plot:
-            plt.plot(bins, pd / pd.sum(), label='raw')
-            plt.plot(bins, best_fit_line, label='fit')
-            plt.xlabel('Volumes [$\AA^3$]')
-            plt.ylabel('Probability density')
-            plt.show()
-        normalized_probability = best_fit_line.max()
-        self.output.fe_A_to_G_correction = KB * self.input.temperature * np.log(normalized_probability)
 
     def get_center_of_mass_correction(self):
         print("Getting center of mass correction...")
@@ -162,16 +163,16 @@ class FreeEnergy(GenericJob):
         """
         Run Phonopy on the minimized NPT-MD structure.
         """
-        if not self._minimized_structure:
+        if not self.output.minimized_structure:
             raise ValueError("`minimized structure´ is not set. Please run `get_npt_md_structure()´")
         print("Running phonopy...")
         phon_folder = self.project.create_group("phonons")
         phon_ref = phon_folder.create.job.Lammps("phonon_ref_job")
-        phon_ref.structure = self._minimized_structure.copy()
+        phon_ref.structure = self.output.minimized_structure.copy()
         phon_ref.potential = self.input.potential
         phonopy_job = phon_ref.create_job(self.project.job_type.PhonopyJob, "phonopy_job")
         phonopy_job.input['interaction_range'] = \
-            np.amin(np.linalg.norm(self._minimized_structure.cell.array, axis=0)) - 1e-8
+            np.amin(np.linalg.norm(self.output.minimized_structure.cell.array, axis=0)) - 1e-8
         phonopy_job.run()
         self._phonopy_job = phonopy_job
 
@@ -291,8 +292,8 @@ class FreeEnergy(GenericJob):
         Run the methods.
         """
         self.run_npt_md()
-        self.get_npt_md_structure()
-        self.get_A_to_G_correction()
+        self.run_md_analysis()
+        self.minimize_structure()
         self.get_center_of_mass_correction()
         if self.input.spring_constant is not None:
             self.get_classical_harmonic_free_energy()
