@@ -189,6 +189,7 @@ class QuantumToClassicalTemperature(GenericJob):
         self.get_quantum_pd()
         self.get_expectations()
         self.get_equivalent_classical_temperature()
+        self.to_hdf(self.project_hdf5)
 
     def to_hdf(self, hdf=None, group_name=None):
         """
