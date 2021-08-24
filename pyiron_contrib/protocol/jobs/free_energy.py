@@ -35,7 +35,7 @@ class FreeEnergy(GenericJob):
         self.input.temperature = None
         self.input.structure = None
         self.input.potential = None
-        self.input.reference = 'classical'
+        self.input.reference_oscillator = 'einstein_classical'
         # shared inputs
         self.input.temperature_damping_timescale = 100.
         self.input.time_step = 1.
@@ -55,7 +55,7 @@ class FreeEnergy(GenericJob):
         self.input.cutoff_factor = 0.5
         self.input.use_reflection = False
         # internal
-        self._mass = None
+        self._masses = None
         self._n_atoms = None
         self._thermalize_snapshots = None
         self._npt_job = None
@@ -128,7 +128,7 @@ class FreeEnergy(GenericJob):
         self.output.optimum_cell = np.cbrt([self.output.optimum_volume]) * np.eye(3)
         self.output.fe_A_to_G_correction = KB * self.input.temperature * np.log(normalized_probability)
 
-    def get_spring_constant(self):
+    def get_spring_constants(self):
         print("Getting spring constant...")
         total_displacement = self._npt_job.output.total_displacements[self._thermalize_snapshots:-1]
         msd = [np.mean(np.sum(d ** 2, axis=1), axis=0) for d in total_displacement]
@@ -137,7 +137,8 @@ class FreeEnergy(GenericJob):
         mu, sigma = norm.fit(msd)
         bins = (bins[1:] + bins[:-1]) / 2
         popt, pcov = curve_fit(self.gaus, bins, pd, p0=[1, mu, sigma])
-        self.output.spring_constant = 3 * KB * self.input.temperature / np.sum(bins * self.gaus(bins, *popt))
+        self.output.spring_constants = 3 * KB * self.input.temperature / np.sum(bins * self.gaus(bins, *popt)) *  \
+                                       np.ones(3 * self._n_atoms)
 
     def minimize_structure(self):
         """
@@ -164,10 +165,10 @@ class FreeEnergy(GenericJob):
 
     def get_center_of_mass_correction(self):
         print("Getting center of mass correction...")
-        self._mass = self.output.minimized_structure.get_masses()[0]
-        Lambda = 17.458218 / np.sqrt(self.input.temperature * self._mass)
+        self._masses = self.output.minimized_structure.get_masses_dof()
         volume = self.output.minimized_structure.get_volume()
         self._n_atoms = self.output.minimized_structure.get_number_of_atoms()
+        Lambda = 17.458218 / np.sqrt(self.input.temperature * np.mean(self._masses))
         self.output.fe_com = -KB * self.input.temperature * (np.log(volume / (self._n_atoms * Lambda ** 3)) +
                                                              1.5 * np.log(self._n_atoms))
 
@@ -207,6 +208,16 @@ class FreeEnergy(GenericJob):
         self.output.fe_quantum_harm = therm_prop.free_energies.flatten()
         self.output.force_constants = self._phonopy_job.phonopy.force_constants
 
+    @staticmethod
+    def force_constants_reshape(force_constants):
+        force_shape = np.shape(force_constants)
+        force_reshape = force_shape[0] * force_shape[2]
+        return np.transpose(force_constants, (0, 2, 1, 3)).reshape((force_reshape, force_reshape))
+
+    def get_phonopy_spring_constants(self):
+        sc, _ = np.linalg.eigh(self.force_constants_reshape(self.output.force_constants))
+        self.output.spring_constants = sc
+
     def get_classical_harmonic_free_energy(self):
         """
         Get the free energy of a classical harmonic oscillator. Temperature is clipped at 1 micro-Kelvin.
@@ -216,16 +227,20 @@ class FreeEnergy(GenericJob):
         print("Getting reference classical harmonic free energy...")
         ROOT_EV_PER_ANGSTROM_SQUARE_PER_AMU_IN_S = 9.82269385e13
         temperature = np.clip(self.input.temperature, 1e-6, np.inf)
-        hbar_omega = HBAR * np.sqrt(self.output.spring_constant / self._mass) * ROOT_EV_PER_ANGSTROM_SQUARE_PER_AMU_IN_S
-        self.output.fe_classical_harm = -3 * self._n_atoms * KB * temperature * np.log((KB * temperature) / hbar_omega)
+        self.output.fe_classical_harm = 0
+        for (spring, mass) in zip(self.output.spring_constants[3:], self._masses[3:]):
+            if spring > 1e-4:
+                hbar_omega = HBAR * np.sqrt(spring / mass) * ROOT_EV_PER_ANGSTROM_SQUARE_PER_AMU_IN_S
+                self.output.fe_classical_harm -= KB * temperature * np.log((KB * temperature) / hbar_omega)
 
     def run_reference_to_eam_tild(self, ):
         """
         Run TILD between the non-interacting harmonic system and the interacting system.
         """
-        if self.input.reference == 'classical':
-            force_constants = self.output.spring_constant
-        elif self.input.reference == 'quantum':
+        if self.input.reference_oscillator == 'einstein_classical':
+            force_constants = self.output.spring_constants[0]
+        elif (self.input.reference_oscillator == 'debye_quantum') or \
+                (self.input.reference_oscillator == 'debye_classical'):
             force_constants = self.output.force_constants
         else:
             raise ValueError
@@ -288,9 +303,10 @@ class FreeEnergy(GenericJob):
         """
         Return the anharmonic free energy per atom at the input temperature for the input structure.
         """
-        if self.input.reference == 'classical':
+        if (self.input.reference_oscillator == 'einstein_classical') or \
+                (self.input.reference_oscillator == 'debye_classical'):
             fe_ref = self.output.fe_classical_harm
-        elif self.input.reference == 'quantum':
+        elif self.input.reference_oscillator == 'debye_quantum':
             fe_ref = self.output.fe_quantum_harm
         else:
             raise ValueError
@@ -311,14 +327,16 @@ class FreeEnergy(GenericJob):
         self.run_md_analysis()
         self.minimize_structure()
         self.get_center_of_mass_correction()
-        if self.input.reference == 'classical':
-            self.get_spring_constant()
-            self.get_classical_harmonic_free_energy()
-        elif self.input.reference == 'quantum':
+        if self.input.reference_oscillator == 'einstein_classical':
+            self.get_spring_constants()
+        elif (self.input.reference_oscillator == 'debye_classical') or \
+                (self.input.reference_oscillator == 'debye_quantum'):
             self.run_phonopy()
             self.get_phonopy_output()
+            self.get_phonopy_spring_constants()
         else:
             raise ValueError
+        self.get_classical_harmonic_free_energy()
         self.run_reference_to_eam_tild()
         self.get_tild_output(plot_integrands=True)
         self.get_G_per_atom()
