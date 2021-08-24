@@ -258,7 +258,7 @@ class FreeEnergy(GenericJob):
         ref_job_b.potential = self.input.potential
         ref_job_b.save()
         # tild job
-        tild_job = tild_folder.create_job(ProtoTILDPar, "tild_job")
+        tild_job = tild_folder.create.job.ProtoTILDPar("tild_job")
         tild_job.input.temperature = self.input.temperature
         tild_job.input.ref_job_a_full_path = ref_job_a.path
         tild_job.input.ref_job_b_full_path = ref_job_b.path

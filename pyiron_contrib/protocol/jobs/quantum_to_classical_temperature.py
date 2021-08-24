@@ -75,9 +75,8 @@ class QuantumToClassicalTemperature(GenericJob):
         self.input.potential = None
         # potential generation
         self.input.potential_samples = 1000
-        self.input.displacement_low = 0.8
-        self.input.displacement_high = 1.65
-        self.input.displacement_axis = [0., 1., 1.]
+        self.input.displacement_low = 0.55
+        self.input.displacement_high = 2.20
         # internal
         self._atomic_mass = None
         self._n_atoms = None
@@ -88,29 +87,36 @@ class QuantumToClassicalTemperature(GenericJob):
         self._atomic_mass = self.input.structure.get_masses()[0]
         self._n_atoms = self.input.structure.get_number_of_atoms()
 
+    @staticmethod
+    def create_diatom(structure):
+        new_struct = structure.copy()
+        for _ in np.arange(len(structure) - 2):  # leave 2 atoms
+            new_struct.pop(2)
+        new_struct.pbc = [False, False, False]
+        return new_struct
+
     def generate_1d_potential(self):
         pr = self.project.create_group(self.job_name)
-        base_pos = self.input.structure.positions.copy()
+        self.output.diatom_structure = self.create_diatom(self.input.structure)
+        base_pos = self.output.diatom_structure.positions.copy()
         displacements = np.linspace(self.input.displacement_low, self.input.displacement_high,
                                     self.input.potential_samples)
         pos_atom_1 = np.array([base_pos[1] * disp for disp in displacements])
         pot_job = pr.create.job.Lammps('pot_job')
-        pot_job.structure = self.input.structure.copy()
+        pot_job.structure = self.output.diatom_structure.copy()
         pot_job.potential = self.input.potential
         pot_job.interactive_open()
         pot_job.interactive_initialize_interface()
-        force_atom_0 = []
+        energy_pot = []
         for p in pos_atom_1:
             new_pos = base_pos.copy()
             new_pos[1] = p
             pot_job.interactive_positions_setter(new_pos)
             pot_job._interactive_lib_command(pot_job._interactive_run_command)
-            force_atom_0.append(pot_job.interactive_forces_getter()[0])
+            energy_pot.append(pot_job.interactive_energy_pot_getter())
         self.status.finished = True
-        force_atom_0 = np.array(force_atom_0)
-        force_along_011 = np.dot(force_atom_0, np.array(self.input.displacement_axis))
         self.output.nn_dist_ang = np.linalg.norm(pos_atom_1, axis=1)
-        self.output.potential_ev = cumtrapz(force_along_011, x=self.output.nn_dist_ang, initial=0)
+        self.output.potential_ev = np.array(energy_pot).flatten()
 
     @staticmethod
     def convert_pyiron_to_atomic_units(distance=None, energy=None):
@@ -145,22 +151,26 @@ class QuantumToClassicalTemperature(GenericJob):
                               n_states=self.input.potential_samples - 1, mass=self._atomic_mass)
         self.output.eigenvalues, self.output.eigenvectors = ham.solve()
 
-    def _get_boltzmann_weighted_pd(self, temperature):
+    @staticmethod
+    def _get_boltzmann_weighted_pd(eigenvalues, eigenvectors, potential, temperature):
+        # truncate the eigens to that the eigenvalues are not greater than the maxima of the tail end of the potential
+        trunc_eigenvalues = eigenvalues[eigenvalues <= potential[-1]] - potential.min()
+        trunc_eigenvectors = eigenvectors[eigenvalues <= potential[-1]]
         # get the occupation probability of each state - Boltzmann weighting
-        boltzmann = np.exp(-(self.output.eigenvalues - self.output.potential_H.min()) /
-                           (KB_HARTREE_PER_KELVIN * temperature))
+        boltzmann = np.exp(-trunc_eigenvalues / (KB_HARTREE_PER_KELVIN * temperature))
         boltzmann_weight = boltzmann / np.sum(boltzmann)  # !partition function!
         # get the weighted probability density
-        weight_pd = np.sum(boltzmann_weight[:, np.newaxis] * self.output.eigenvectors ** 2,
+        weight_pd = np.sum(boltzmann_weight[:, np.newaxis] * trunc_eigenvectors ** 2,
                            axis=0)  # probability density, which is square of the wavefunction
         # also return just the ground state for comparison
-        ground_pd = self.output.eigenvectors[0] ** 2
+        ground_pd = eigenvectors[0] ** 2
         return weight_pd, ground_pd, boltzmann_weight
 
     def get_quantum_pd(self):
         self._pd_quantum_all = []
         for temp in self.input.temperatures:
-            pd, _, _ = self._get_boltzmann_weighted_pd(temperature=temp)
+            pd, _, _ = self._get_boltzmann_weighted_pd(self.output.eigenvalues, self.output.eigenvectors,
+                                                       self.output.potential_H, temp)
             self._pd_quantum_all.append(pd)
         self._pd_quantum_all = np.array(self._pd_quantum_all)
 
