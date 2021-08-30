@@ -2,7 +2,6 @@
 # Copyright (c) Max-Planck-Institut für Eisenforschung GmbH - Computational Materials Design (CM) Department
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
-from pyiron_contrib.protocol.compound.thermodynamic_integration import ProtoTILDPar
 from pyiron_base.master.generic import GenericJob
 from pyiron_base.generic.datacontainer import DataContainer
 

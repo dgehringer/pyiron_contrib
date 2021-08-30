@@ -77,6 +77,8 @@ class QuantumToClassicalTemperature(GenericJob):
         self.input.potential_samples = 201
         self.input.strain_low = -0.12
         self.input.strain_high = 1.
+        self.input.displacement_low = 0.50
+        self.input.displacement_high = 1.55
         # internal
         self._atomic_mass = None
         self._n_atoms = None
@@ -87,57 +89,57 @@ class QuantumToClassicalTemperature(GenericJob):
         self._atomic_mass = self.input.structure.get_masses()[0]
         self._n_atoms = self.input.structure.get_number_of_atoms()
 
-    # @staticmethod
-    # def create_diatom(structure):
-    #     new_struct = structure.copy()
-    #     for _ in np.arange(len(structure) - 2):  # leave 2 atoms
-    #         new_struct.pop(2)
-    #     new_struct.pbc = [False, False, False]
-    #     return new_struct
-    #
-    # def generate_1d_potential(self):
-    #     pr = self.project.create_group(self.job_name)
-    #     self.output.diatom_structure = self.create_diatom(self.input.structure)
-    #     base_pos = self.output.diatom_structure.positions.copy()
-    #     displacements = np.linspace(self.input.displacement_low, self.input.displacement_high,
-    #                                 self.input.potential_samples)
-    #     pos_atom_1 = np.array([base_pos[1] * disp for disp in displacements])
-    #     pot_job = pr.create.job.Lammps('pot_job')
-    #     pot_job.structure = self.output.diatom_structure.copy()
-    #     pot_job.potential = self.input.potential
-    #     pot_job.interactive_open()
-    #     pot_job.interactive_initialize_interface()
-    #     energy_pot = []
-    #     for p in pos_atom_1:
-    #         new_pos = base_pos.copy()
-    #         new_pos[1] = p
-    #         pot_job.interactive_positions_setter(new_pos)
-    #         pot_job._interactive_lib_command(pot_job._interactive_run_command)
-    #         energy_pot.append(pot_job.interactive_energy_pot_getter())
-    #     self.status.finished = True
-    #     self.output.nn_dist_ang = np.linalg.norm(pos_atom_1, axis=1)
-    #     self.output.potential_ev = np.array(energy_pot).flatten()
+    @staticmethod
+    def create_diatom(structure):
+        new_struct = structure.copy()
+        for _ in np.arange(len(structure) - 2):  # leave 2 atoms
+            new_struct.pop(2)
+        new_struct.pbc = [False, False, False]
+        return new_struct
 
     def generate_1d_potential(self):
         pr = self.project.create_group(self.job_name)
-        strains = np.linspace(self.input.strain_low, self.input.strain_high,
+        self.output.diatom_structure = self.create_diatom(self.input.structure)
+        base_pos = self.output.diatom_structure.positions.copy()
+        displacements = np.linspace(self.input.displacement_low, self.input.displacement_high,
                                     self.input.potential_samples)
+        pos_atom_1 = np.array([base_pos[1] * disp for disp in displacements])
         pot_job = pr.create.job.Lammps('pot_job')
-        pot_job.structure = self.input.structure.copy()
+        pot_job.structure = self.output.diatom_structure.copy()
         pot_job.potential = self.input.potential
         pot_job.interactive_open()
         pot_job.interactive_initialize_interface()
         energy_pot = []
-        nn_dist = []
-        for strain in strains:
-            new_struct = self.input.structure.copy().apply_strain(strain, return_box=True)
-            nn_dist.append(np.linalg.norm(new_struct.positions[1]))
-            pot_job.interactive_structure_setter(new_struct)
+        for p in pos_atom_1:
+            new_pos = base_pos.copy()
+            new_pos[1] = p
+            pot_job.interactive_positions_setter(new_pos)
             pot_job._interactive_lib_command(pot_job._interactive_run_command)
-            energy_pot.append(pot_job.interactive_energy_pot_getter() / self._n_atoms)
+            energy_pot.append(pot_job.interactive_energy_pot_getter())
         self.status.finished = True
-        self.output.nn_dist_ang = np.array(nn_dist).flatten()
+        self.output.nn_dist_ang = np.linalg.norm(pos_atom_1, axis=1)
         self.output.potential_ev = np.array(energy_pot).flatten()
+
+    # def generate_1d_potential(self):
+    #     pr = self.project.create_group(self.job_name)
+    #     strains = np.linspace(self.input.strain_low, self.input.strain_high,
+    #                                 self.input.potential_samples)
+    #     pot_job = pr.create.job.Lammps('pot_job')
+    #     pot_job.structure = self.input.structure.copy()
+    #     pot_job.potential = self.input.potential
+    #     pot_job.interactive_open()
+    #     pot_job.interactive_initialize_interface()
+    #     energy_pot = []
+    #     nn_dist = []
+    #     for strain in strains:
+    #         new_struct = self.input.structure.copy().apply_strain(strain, return_box=True)
+    #         nn_dist.append(np.linalg.norm(new_struct.positions[1]))
+    #         pot_job.interactive_structure_setter(new_struct)
+    #         pot_job._interactive_lib_command(pot_job._interactive_run_command)
+    #         energy_pot.append(pot_job.interactive_energy_pot_getter() / self._n_atoms)
+    #     self.status.finished = True
+    #     self.output.nn_dist_ang = np.array(nn_dist).flatten()
+    #     self.output.potential_ev = np.array(energy_pot).flatten()
 
     @staticmethod
     def convert_pyiron_to_atomic_units(distance=None, energy=None):
