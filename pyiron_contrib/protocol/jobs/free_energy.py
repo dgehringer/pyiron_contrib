@@ -32,7 +32,8 @@ class FreeEnergy(GenericJob):
         self.input = DataContainer(table_name="job_input")
         self.output = DataContainer(table_name="job_output")
         # general inputs
-        self.input.temperature = None
+        self.input.classical_temperature = None
+        self.input.quantum_temperature = None
         self.input.structure = None
         self.input.potential = None
         self.input.reference_oscillator = 'einstein_classical'
@@ -85,7 +86,7 @@ class FreeEnergy(GenericJob):
         npt_job = npt_md_folder.create.job.Lammps("npt_job")
         npt_job.structure = self.input.structure.copy()
         npt_job.potential = self.input.potential
-        npt_job.calc_md(temperature=self.input.temperature,
+        npt_job.calc_md(temperature=self.input.classical_temperature,
                         pressure=0.,
                         temperature_damping_timescale=self.input.temperature_damping_timescale,
                         pressure_damping_timescale=1000.,
@@ -126,7 +127,7 @@ class FreeEnergy(GenericJob):
             plt.show()
         self.output.optimum_volume = fine_bins[np.argmax(best_fit_line)]
         self.output.optimum_cell = np.cbrt([self.output.optimum_volume]) * np.eye(3)
-        self.output.fe_A_to_G_correction = KB * self.input.temperature * np.log(normalized_probability)
+        self.output.fe_A_to_G_correction = KB * self.input.classical_temperature * np.log(normalized_probability)
 
     def get_spring_constants(self):
         print("Getting spring constant...")
@@ -137,7 +138,7 @@ class FreeEnergy(GenericJob):
         mu, sigma = norm.fit(msd)
         bins = (bins[1:] + bins[:-1]) / 2
         popt, pcov = curve_fit(self.gaus, bins, pd, p0=[1, mu, sigma])
-        self.output.spring_constants = 3 * KB * self.input.temperature / np.sum(bins * self.gaus(bins, *popt)) *  \
+        self.output.spring_constants = 3 * KB * self.input.classical_temperature / np.sum(bins * self.gaus(bins, *popt)) *  \
                                        np.ones(3 * self._n_atoms)
 
     def minimize_structure(self):
@@ -168,8 +169,8 @@ class FreeEnergy(GenericJob):
         self._masses = self.output.minimized_structure.get_masses_dof()
         volume = self.output.minimized_structure.get_volume()
         self._n_atoms = self.output.minimized_structure.get_number_of_atoms()
-        Lambda = 17.458218 / np.sqrt(self.input.temperature * np.mean(self._masses))
-        self.output.fe_com = -KB * self.input.temperature * (np.log(volume / (self._n_atoms * Lambda ** 3)) +
+        Lambda = 17.458218 / np.sqrt(self.input.classical_temperature * np.mean(self._masses))
+        self.output.fe_com = -KB * self.input.classical_temperature * (np.log(volume / (self._n_atoms * Lambda ** 3)) +
                                                              1.5 * np.log(self._n_atoms))
 
     def run_phonopy(self):
@@ -201,10 +202,10 @@ class FreeEnergy(GenericJob):
             self._cleanup_job(self._phonopy_job)
         print("Getting force constants and reference QH free energy...")
         try:
-            therm_prop = self._phonopy_job.get_thermal_properties(temperatures=self.input.temperature)
+            therm_prop = self._phonopy_job.get_thermal_properties(temperatures=self.input.quantum_temperature)
         except AttributeError:
             self.output.phonopy_job = self.project.load(self._phonopy_job.job_name)
-            therm_prop = self._phonopy_job.get_thermal_properties(temperatures=self.input.temperature)
+            therm_prop = self._phonopy_job.get_thermal_properties(temperatures=self.input.quantum_temperature)
         self.output.fe_quantum_harm = therm_prop.free_energies.flatten()
         self.output.force_constants = self._phonopy_job.phonopy.force_constants
 
@@ -226,14 +227,31 @@ class FreeEnergy(GenericJob):
         """
         print("Getting reference classical harmonic free energy...")
         ROOT_EV_PER_ANGSTROM_SQUARE_PER_AMU_IN_S = 9.82269385e13
-        temperature = np.clip(self.input.temperature, 1e-6, np.inf)
+        temperature = np.clip(self.input.classical_temperature, 1e-6, np.inf)
         self.output.fe_classical_harm = 0
         for (spring, mass) in zip(self.output.spring_constants[3:], self._masses[3:]):
             if spring > 1e-4:
                 hbar_omega = HBAR * np.sqrt(spring / mass) * ROOT_EV_PER_ANGSTROM_SQUARE_PER_AMU_IN_S
                 self.output.fe_classical_harm -= KB * temperature * np.log((KB * temperature) / hbar_omega)
 
-    def run_reference_to_eam_tild(self, ):
+    def get_quantum_harmonic_free_energy(self):
+        """
+        Get the total free energy of a harmonic oscillator with this frequency and these atoms. Temperatures are clipped
+        at 1 micro-Kelvin.
+        Returns:
+            float/np.ndarray: The sum of the free energy of each atom.
+        """
+        print("Getting reference quantum harmonic free energy...")
+        ROOT_EV_PER_ANGSTROM_SQUARE_PER_AMU_IN_S = 9.82269385e13
+        temperature = np.clip(self.input.quantum_temperature, 1e-6, np.inf)
+        beta = 1. / (KB * temperature)
+        self.output.fe_quantum_harm = 0
+        for (spring, mass) in zip(self.output.spring_constants[3:], self._masses[3:]):
+            if spring > 1e-4:
+                hbar_omega = HBAR * np.sqrt(spring / mass) * ROOT_EV_PER_ANGSTROM_SQUARE_PER_AMU_IN_S
+                self.output.fe_quantum_harm += (1. / 2) * hbar_omega + ((1. / beta) * np.log(1 - np.exp(-beta * hbar_omega)))
+
+    def run_reference_to_eam_tild(self):
         """
         Run TILD between the non-interacting harmonic system and the interacting system.
         """
@@ -259,7 +277,7 @@ class FreeEnergy(GenericJob):
         ref_job_b.save()
         # tild job
         tild_job = tild_folder.create.job.ProtoTILDPar("tild_job")
-        tild_job.input.temperature = self.input.temperature
+        tild_job.input.temperature = self.input.classical_temperature
         tild_job.input.ref_job_a_full_path = ref_job_a.path
         tild_job.input.ref_job_b_full_path = ref_job_b.path
         tild_job.input.n_lambdas = self.input.tild_n_lambdas
@@ -305,7 +323,7 @@ class FreeEnergy(GenericJob):
         """
         if (self.input.reference_oscillator == 'einstein_classical') or \
                 (self.input.reference_oscillator == 'debye_classical'):
-            fe_ref = self.output.fe_classical_harm
+            fe_ref = self.output.fe_quantum_harm
         elif self.input.reference_oscillator == 'debye_quantum':
             fe_ref = self.output.fe_quantum_harm
         else:
@@ -337,6 +355,7 @@ class FreeEnergy(GenericJob):
         else:
             raise ValueError
         self.get_classical_harmonic_free_energy()
+        self.get_quantum_harmonic_free_energy()
         self.run_reference_to_eam_tild()
         self.get_tild_output(plot_integrands=True)
         self.get_G_per_atom()

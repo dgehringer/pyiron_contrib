@@ -74,48 +74,69 @@ class QuantumToClassicalTemperature(GenericJob):
         self.input.structure = None
         self.input.potential = None
         # potential generation
-        self.input.potential_samples = 1000
-        self.input.displacement_low = 0.55
-        self.input.displacement_high = 2.20
+        self.input.potential_samples = 201
+        self.input.strain_low = -0.12
+        self.input.strain_high = 1.
         # internal
         self._atomic_mass = None
         self._n_atoms = None
-        self._pd_classical_all = None
-        self._pd_quantum_all = None
+        self.pd_classical_all = None
+        self.pd_quantum_all = None
 
     def validate_ready_to_run(self):
         self._atomic_mass = self.input.structure.get_masses()[0]
         self._n_atoms = self.input.structure.get_number_of_atoms()
 
-    @staticmethod
-    def create_diatom(structure):
-        new_struct = structure.copy()
-        for _ in np.arange(len(structure) - 2):  # leave 2 atoms
-            new_struct.pop(2)
-        new_struct.pbc = [False, False, False]
-        return new_struct
+    # @staticmethod
+    # def create_diatom(structure):
+    #     new_struct = structure.copy()
+    #     for _ in np.arange(len(structure) - 2):  # leave 2 atoms
+    #         new_struct.pop(2)
+    #     new_struct.pbc = [False, False, False]
+    #     return new_struct
+    #
+    # def generate_1d_potential(self):
+    #     pr = self.project.create_group(self.job_name)
+    #     self.output.diatom_structure = self.create_diatom(self.input.structure)
+    #     base_pos = self.output.diatom_structure.positions.copy()
+    #     displacements = np.linspace(self.input.displacement_low, self.input.displacement_high,
+    #                                 self.input.potential_samples)
+    #     pos_atom_1 = np.array([base_pos[1] * disp for disp in displacements])
+    #     pot_job = pr.create.job.Lammps('pot_job')
+    #     pot_job.structure = self.output.diatom_structure.copy()
+    #     pot_job.potential = self.input.potential
+    #     pot_job.interactive_open()
+    #     pot_job.interactive_initialize_interface()
+    #     energy_pot = []
+    #     for p in pos_atom_1:
+    #         new_pos = base_pos.copy()
+    #         new_pos[1] = p
+    #         pot_job.interactive_positions_setter(new_pos)
+    #         pot_job._interactive_lib_command(pot_job._interactive_run_command)
+    #         energy_pot.append(pot_job.interactive_energy_pot_getter())
+    #     self.status.finished = True
+    #     self.output.nn_dist_ang = np.linalg.norm(pos_atom_1, axis=1)
+    #     self.output.potential_ev = np.array(energy_pot).flatten()
 
     def generate_1d_potential(self):
         pr = self.project.create_group(self.job_name)
-        self.output.diatom_structure = self.create_diatom(self.input.structure)
-        base_pos = self.output.diatom_structure.positions.copy()
-        displacements = np.linspace(self.input.displacement_low, self.input.displacement_high,
+        strains = np.linspace(self.input.strain_low, self.input.strain_high,
                                     self.input.potential_samples)
-        pos_atom_1 = np.array([base_pos[1] * disp for disp in displacements])
         pot_job = pr.create.job.Lammps('pot_job')
-        pot_job.structure = self.output.diatom_structure.copy()
+        pot_job.structure = self.input.structure.copy()
         pot_job.potential = self.input.potential
         pot_job.interactive_open()
         pot_job.interactive_initialize_interface()
         energy_pot = []
-        for p in pos_atom_1:
-            new_pos = base_pos.copy()
-            new_pos[1] = p
-            pot_job.interactive_positions_setter(new_pos)
+        nn_dist = []
+        for strain in strains:
+            new_struct = self.input.structure.copy().apply_strain(strain, return_box=True)
+            nn_dist.append(np.linalg.norm(new_struct.positions[1]))
+            pot_job.interactive_structure_setter(new_struct)
             pot_job._interactive_lib_command(pot_job._interactive_run_command)
-            energy_pot.append(pot_job.interactive_energy_pot_getter())
+            energy_pot.append(pot_job.interactive_energy_pot_getter() / self._n_atoms)
         self.status.finished = True
-        self.output.nn_dist_ang = np.linalg.norm(pos_atom_1, axis=1)
+        self.output.nn_dist_ang = np.array(nn_dist).flatten()
         self.output.potential_ev = np.array(energy_pot).flatten()
 
     @staticmethod
@@ -139,12 +160,12 @@ class QuantumToClassicalTemperature(GenericJob):
     def get_classical_pd(self):
         self.output.nn_dist_bohr, self.output.potential_H = self.convert_pyiron_to_atomic_units(self.output.nn_dist_ang,
                                                                                                 self.output.potential_ev)
-        self._pd_classical_all = []
+        self.output.pd_classical_all = []
         for temp in self.input.temperatures:
             pd_boltz = np.exp(-(self.output.potential_H - self.output.potential_H.min()) /
                               (KB_HARTREE_PER_KELVIN * temp))
-            self._pd_classical_all.append(pd_boltz / pd_boltz.sum())
-        self._pd_classical_all = np.array(self._pd_classical_all)
+            self.output.pd_classical_all.append(pd_boltz / pd_boltz.sum())
+        self.output.pd_classical_all = np.array(self.output.pd_classical_all)
 
     def solve_TISD(self):
         ham = Schroedinger_1D(x=self.output.nn_dist_bohr, pot=self.output.potential_H,
@@ -167,16 +188,16 @@ class QuantumToClassicalTemperature(GenericJob):
         return weight_pd, ground_pd, boltzmann_weight
 
     def get_quantum_pd(self):
-        self._pd_quantum_all = []
+        self.output.pd_quantum_all = []
         for temp in self.input.temperatures:
             pd, _, _ = self._get_boltzmann_weighted_pd(self.output.eigenvalues, self.output.eigenvectors,
                                                        self.output.potential_H, temp)
-            self._pd_quantum_all.append(pd)
-        self._pd_quantum_all = np.array(self._pd_quantum_all)
+            self.output.pd_quantum_all.append(pd)
+        self.output.pd_quantum_all = np.array(self.output.pd_quantum_all)
 
     def get_expectations(self):
-        self.output.energy_classical_H = np.sum(self._pd_classical_all * self.output.potential_H, axis=1)
-        self.output.energy_quantum_H = np.sum(self._pd_quantum_all * self.output.potential_H, axis=1)
+        self.output.energy_classical_H = np.sum(self.output.pd_classical_all * self.output.potential_H, axis=1)
+        self.output.energy_quantum_H = np.sum(self.output.pd_quantum_all * self.output.potential_H, axis=1)
         self.output.energy_classical_ev = self.convert_atomic_to_pyiron_units(energy=self.output.energy_classical_H)
         self.output.energy_quantum_ev = self.convert_atomic_to_pyiron_units(energy=self.output.energy_quantum_H)
 
