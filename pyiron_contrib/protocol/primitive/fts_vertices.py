@@ -250,7 +250,7 @@ class CentroidsSmoothing(PrimitiveVertex):
             smoothing_matrix = self._get_smoothing_matrix(n_images, smoothing_strength)
             smoothed_centroid_positions = np.tensordot(smoothing_matrix, np.array(centroids_pos_list), axes=1)
         elif smooth_style == 'local':
-            smoothed_centroid_positions = self._locally_smoothed(smoothing_strength, centroids_pos_list)
+            smoothed_centroid_positions = self._locally_smoothed(structure, smoothing_strength, centroids_pos_list)
         else:
             raise TypeError('Smoothing: choose style = "global" or "local"')
         return {

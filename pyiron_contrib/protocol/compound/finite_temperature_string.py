@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 from pyiron_contrib.protocol.generic import CompoundVertex, Protocol
-from pyiron_contrib.protocol.primitive.one_state import CreateJob, Counter, CutoffDistance, ExternalHamiltonian, \
-    InitialPositions, RemoveJob, RandomVelocity, SphereReflection, VerletPositionUpdate, \
+from pyiron_contrib.protocol.primitive.one_state import CreateSubJobs, Counter, CutoffDistance, ExternalHamiltonian, \
+    InitialPositions, RandomVelocity, SphereReflection, VerletPositionUpdate, \
     VerletVelocityUpdate, Zeros
 from pyiron_contrib.protocol.primitive.two_state import IsGEq, ModIsZero
 from pyiron_contrib.protocol.primitive.fts_vertices import CentroidsRunningAverageMix, CentroidsReparameterization, \
@@ -111,8 +111,8 @@ class FTSEvolution(CompoundVertex):
     def define_vertices(self):
         # Graph components
         g = self.graph
-        g.initialize_images = CreateJob()
-        g.initialize_centroids = CreateJob()
+        g.initialize_images = CreateSubJobs()
+        g.initialize_centroids = CreateSubJobs()
         g.initial_positions = InitialPositions()
         g.initial_velocities = SerialList(RandomVelocity)
         g.initial_forces = Zeros()
@@ -240,7 +240,7 @@ class FTSEvolution(CompoundVertex):
         g.reflect_atoms.broadcast.default.previous_positions = \
             gp.initial_positions.output.initial_positions[-1]
         g.reflect_atoms.broadcast.default.previous_velocities = gp.initial_velocities.output.velocities[-1]
-        g.reflect_atoms.direct.default.total_steps = ip.total_steps
+        g.reflect_atoms.direct.default.total_steps = ip._total_steps
 
         g.reflect_atoms.broadcast.reference_positions = gp.reparameterize.output.centroids_pos_list[-1]
         g.reflect_atoms.broadcast.positions = gp.reflect_string.output.positions[-1]
@@ -254,10 +254,10 @@ class FTSEvolution(CompoundVertex):
 
         # calc_static_images
         g.calc_static_images.input.n_children = ip.n_images
-        g.calc_static_images.direct.structure = ip.structure_initial
-        g.calc_static_images.broadcast.project_path = gp.initialize_images.output.project_path[-1]
-        g.calc_static_images.broadcast.job_name = gp.initialize_images.output.job_names[-1]
+        g.calc_static_images.broadcast.job_project_path = gp.initialize_images.output.jobs_project_path[-1]
+        g.calc_static_images.broadcast.job_name = gp.initialize_images.output.jobs_names[-1]
         g.calc_static_images.broadcast.positions = gp.reflect_atoms.output.positions[-1]
+        g.calc_static_images.direct.cell = ip.structure_initial.cell.array
 
         # verlet_velocities
         g.verlet_velocities.input.n_children = ip.n_images
@@ -271,8 +271,8 @@ class FTSEvolution(CompoundVertex):
         # running_average_positions
         g.running_average_pos.input.n_children = ip.n_images
         g.running_average_pos.direct.default.thermalization_steps = ip.thermalization_steps
-        g.running_average_pos.direct.default.total_steps = ip.total_steps
-        g.running_average_pos.direct.default.divisor = ip.divisor
+        g.running_average_pos.direct.default.total_steps = ip._total_steps
+        g.running_average_pos.direct.default.divisor = ip._divisor
         g.running_average_pos.broadcast.default.running_average_positions = \
             gp.initial_positions.output.initial_positions[-1]
 
@@ -308,10 +308,10 @@ class FTSEvolution(CompoundVertex):
 
         # calc_static_centroids
         g.calc_static_centroids.input.n_children = ip.n_images
-        g.calc_static_centroids.direct.structure = ip.structure_initial
-        g.calc_static_centroids.broadcast.project_path = gp.initialize_centroids.output.project_path[-1]
-        g.calc_static_centroids.broadcast.job_name = gp.initialize_centroids.output.job_names[-1]
+        g.calc_static_centroids.broadcast.job_project_path = gp.initialize_centroids.output.jobs_project_path[-1]
+        g.calc_static_centroids.broadcast.job_name = gp.initialize_centroids.output.jobs_names[-1]
         g.calc_static_centroids.broadcast.positions = gp.reparameterize.output.centroids_pos_list[-1]
+        g.calc_static_centroids.direct.cell = ip.structure_initial.cell.array
 
         # recenter
         g.recenter.input.n_children = ip.n_images
@@ -356,25 +356,25 @@ class FTSEvolution(CompoundVertex):
             otherwise by the user!)
         """
         if ax is None:
-            _, ax = plt.subplots()
+            fig, ax = plt.subplots()
         if plot_kwargs is None:
             plot_kwargs = {}
         if 'marker' not in plot_kwargs.keys():
             plot_kwargs = {'marker': 'o'}
         energies = np.array(self._get_energies(frame=frame))
         ax.plot(energies - energies[0], **plot_kwargs)
-        ax.set_ylabel("Energy")
-        ax.set_xlabel("Centroid")
+        ax.set_ylabel(r"Energy $\langle E\rangle$ [eV]")
+        ax.set_xlabel("Centroid number")
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
         return ax
 
     def _get_directional_barrier(self, frame=None, anchor_element=0, use_minima=False):
         energies = self._get_energies(frame=frame)
         if use_minima:
-            reference = energies.min()
+            reference = np.min(energies)
         else:
             reference = energies[anchor_element]
-        return energies.max() - reference
+        return np.max(energies) - reference
 
     def get_forward_barrier(self, frame=None, use_minima=False):
         """
@@ -490,8 +490,7 @@ class _ConstrainedMD(CompoundVertex):
         g.reflect_string.input.velocities = gp.verlet_positions.output.velocities[-1]
         g.reflect_string.input.previous_positions = gp.reflect_atoms.output.positions[-1]
         g.reflect_string.input.previous_velocities = gp.verlet_velocities.output.velocities[-1]
-        g.reflect_string.input.pbc = ip.structure.pbc
-        g.reflect_string.input.cell = ip.structure.cell.array
+        g.reflect_string.input.structure = ip.structure
 
         # reflect_atoms
         g.reflect_atoms.input.default.previous_positions = ip.positions
@@ -506,13 +505,13 @@ class _ConstrainedMD(CompoundVertex):
         g.reflect_atoms.input.structure = ip.structure
         g.reflect_atoms.input.cutoff_distance = ip.cutoff_distance
         g.reflect_atoms.input.use_reflection = ip.use_reflection
-        g.reflect_atoms.input.total_steps = gp.reflect_atoms.output.total_steps[-1]
+        g.reflect_atoms.input.total_steps = gp.running_average_pos.output.total_steps[-1]
 
         # calc_static
-        g.calc_static.input.structure = ip.structure
-        g.calc_static.input.project_path = ip.project_path
+        g.calc_static.input.job_project_path = ip.job_project_path
         g.calc_static.input.job_name = ip.job_name
         g.calc_static.input.positions = gp.reflect_atoms.output.positions[-1]
+        g.calc_static.input.cell = ip.structure.cell.array
 
         # verlet_velocities
         g.verlet_velocities.input.velocities = gp.reflect_atoms.output.velocities[-1]
@@ -576,14 +575,13 @@ class FTSEvolutionParallel(FTSEvolution):
         # Graph components
         g = self.graph
         ip = Pointer(self.input)
-        g.create_centroids = CreateJob()
+        g.create_centroids = CreateSubJobs()
         g.initial_positions = InitialPositions()
         g.initial_forces = Zeros()
         g.initial_velocities = SerialList(RandomVelocity)
         g.cutoff = CutoffDistance()
         g.check_steps = IsGEq()
-        g.remove_images = RemoveJob()
-        g.create_images = CreateJob()
+        g.create_images = CreateSubJobs()
         g.constrained_evo = ParallelList(_ConstrainedMD, sleep_time=ip.sleep_time)
         g.check_thermalized = IsGEq()
         g.mix = CentroidsRunningAverageMix()
@@ -603,7 +601,6 @@ class FTSEvolutionParallel(FTSEvolution):
             g.initial_velocities,
             g.cutoff,
             g.check_steps, 'false',
-            g.remove_images,
             g.create_images,
             g.constrained_evo,
             g.clock,
@@ -653,13 +650,6 @@ class FTSEvolutionParallel(FTSEvolution):
         g.check_steps.input.target = gp.clock.output.n_counts[-1]
         g.check_steps.input.threshold = ip.n_steps
 
-        # remove_images
-        g.remove_images.input.default.project_path = ip.project_path
-        g.remove_images.input.default.job_names = ip.job_name
-
-        g.remove_images.input.project_path = gp.create_images.output.project_path[-1][-1]
-        g.remove_images.input.job_names = gp.create_images.output.job_names[-1]
-
         # create_images
         g.create_images.input.n_images = ip.n_images
         g.create_images.input.ref_job_full_path = ip.ref_job_full_path
@@ -690,20 +680,20 @@ class FTSEvolutionParallel(FTSEvolution):
         g.constrained_evo.broadcast.centroid_positions = gp.reparameterize.output.centroids_pos_list[-1]
 
         # constrained_evolution - reflect_atoms
-        g.constrained_evo.direct.default.total_steps = ip.total_steps
+        g.constrained_evo.direct.default.total_steps = ip._total_steps
         g.constrained_evo.broadcast.total_steps = gp.constrained_evo.output.total_steps[-1]
         g.constrained_evo.direct.cutoff_distance = gp.cutoff.output.cutoff_distance[-1]
 
         # constrained_evolution - calc_static
-        g.constrained_evo.broadcast.project_path = gp.create_images.output.project_path[-1]
-        g.constrained_evo.broadcast.job_name = gp.create_images.output.job_names[-1]
+        g.constrained_evo.broadcast.job_project_path = gp.create_images.output.jobs_project_path[-1]
+        g.constrained_evo.broadcast.job_name = gp.create_images.output.jobs_names[-1]
 
         # constrained_evolution - verlet_velocities
         # takes inputs already specified in verlet_positions
 
         # constrained_evolution - running_average_positions
         g.constrained_evo.direct.default.thermalization_steps = ip.thermalization_steps
-        g.constrained_evo.direct.default.divisor = ip.divisor
+        g.constrained_evo.direct.default.divisor = ip._divisor
         g.constrained_evo.broadcast.default.running_average_positions = \
             gp.initial_positions.output.initial_positions[-1]
 
@@ -742,10 +732,10 @@ class FTSEvolutionParallel(FTSEvolution):
 
         # calc_static_centroids
         g.calc_static_centroids.input.n_children = ip.n_images
-        g.calc_static_centroids.direct.structure = ip.structure_initial
-        g.calc_static_centroids.broadcast.project_path = gp.create_centroids.output.project_path[-1]
-        g.calc_static_centroids.broadcast.job_name = gp.create_centroids.output.job_names[-1]
+        g.calc_static_centroids.broadcast.job_project_path = gp.create_centroids.output.jobs_project_path[-1]
+        g.calc_static_centroids.broadcast.job_name = gp.create_centroids.output.jobs_names[-1]
         g.calc_static_centroids.broadcast.positions = gp.reparameterize.output.centroids_pos_list[-1]
+        g.calc_static_centroids.direct.cell = ip.structure_initial.cell.array
 
         # recenter
         g.recenter.input.n_children = ip.n_images
