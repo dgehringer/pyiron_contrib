@@ -8,6 +8,7 @@ from pyiron_contrib.protocol.utils import InputDictionary, Pointer
 import numpy as np
 import time
 from abc import abstractmethod
+import psutil
 from multiprocessing import Process, Manager
 from pyiron_atomistics.vasp.interactive import VaspInteractive
 from pyiron_atomistics.sphinx.interactive import SphinxInteractive
@@ -148,17 +149,13 @@ class ListVertex(PrimitiveVertex):
 
 class ParallelList(ListVertex):
     """
-    A list of commands which are executed in in parallel. The current implementation uses multiprocessing.Pool.
-
-    Attributes:
-        pool (multiprocessing.Pool): Define the number of workers that will be utilized to run the child jobs.
-            Instantiation and closing are handled by default in `__init__` and `finish`.
-
-        Note: It is best to set the number of workers to the number of cores so as to prevent larger computation
-            times due to subprocess communication between the large number of workers in a single core.
+    A list of commands which are executed in in parallel. The current implementation uses multiprocessing.Process.
     """
-
-    def __init__(self, child_type, sleep_time=0):
+    def __init__(self, child_type, sleep_time=Pointer(0.)):
+        """
+        sleep_time (float): A delay in seconds for database read/write of data. For sqlite, a non-zero delay maybe
+            required. (Default is 0 seconds, no delay.)
+        """
         super(ParallelList, self).__init__(child_type)
         self.sleep_time = sleep_time
 
@@ -170,23 +167,27 @@ class ParallelList(ListVertex):
         for child in self.children:
             child.parallel_setup()
 
-        start_time = time.time()
         sleep_time = ~self.sleep_time
+
+        def run_child(n, return_dict, n_child, logger):
+            proc = psutil.Process()  # get self pid
+            available_cpus = proc.cpu_affinity()
+            proc.cpu_affinity([available_cpus[n]])
+            logger.info("child {} running on core {}".format(n, [available_cpus[n]]))
+            return_dict[n] = n_child.execute_parallel()
 
         all_child_output = Manager().dict()
 
         jobs = []
         for i, child in enumerate(self.children):
-            job = Process(target=child.execute_parallel, args=(i, all_child_output))
+            job = Process(target=run_child, args=(i, all_child_output, child, self.logger))
+            jobs.append(job)
             job.start()
             time.sleep(sleep_time)
-            jobs.append(job)
 
         for job in jobs:
             job.join()
             time.sleep(sleep_time)
-
-        print(all_child_output.keys())
 
         ordered_child_output = dict.fromkeys(range(len(all_child_output)))
         for i in range(len(all_child_output)):
@@ -202,9 +203,6 @@ class ParallelList(ListVertex):
                 output_data[key] = values
         else:
             output_data = None
-
-        stop_time = time.time()
-        print('Time elapsed :', stop_time - start_time)
 
         return output_data
 
@@ -229,6 +227,9 @@ class SerialList(ListVertex):
 
         output_data = self._extract_output_data_from_children()
         return output_data
+
+    def finish(self):
+        super(SerialList, self).finish()
 
 
 class AutoList(ParallelList, SerialList):

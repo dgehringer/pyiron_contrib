@@ -9,6 +9,7 @@ from pyiron_contrib.protocol.utils.pointer import Pointer
 from pyiron_contrib.protocol.utils.misc import  LoggerMixin, fullname
 from pyiron_atomistics.atomistics.structure.atoms import Atoms
 
+
 """
 Classes to setup input and output dataflows for protocols
 """

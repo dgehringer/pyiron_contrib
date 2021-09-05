@@ -9,10 +9,10 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 from pyiron_contrib.protocol.generic import CompoundVertex, Protocol
-from pyiron_contrib.protocol.primitive.one_state import Counter, CreateJob, ExternalHamiltonian, GradientDescent, \
-    InitialPositions, NEBForces
-from pyiron_contrib.protocol.primitive.two_state import IsGEq
-from pyiron_contrib.protocol.list import SerialList, AutoList
+from pyiron_contrib.protocol.primitive.one_state import Counter, CreateSubJobs, ExternalHamiltonian, GradientDescent, \
+    InitialPositions, NEBForces, NEBPostProcess, GradientDescentGamma
+from pyiron_contrib.protocol.primitive.two_state import IsGEq, IsLEq, AnyVertex
+from pyiron_contrib.protocol.list import SerialList, ParallelList
 from pyiron_contrib.protocol.utils import Pointer
 
 """
@@ -29,7 +29,7 @@ __status__ = "development"
 __date__ = "18 July, 2019"
 
 
-class NEB(CompoundVertex):
+class NEBSerial(CompoundVertex):
     """
     Relaxes a system according to the nudged elastic band method (Jonsson et al).
 
@@ -49,9 +49,15 @@ class NEB(CompoundVertex):
         smoothing (float): Strength of the smoothing spring when consecutive images form an angle. (Default is None,
             do not apply such a force.)
         gamma0 (float): Initial step size as a multiple of the force. (Default is 0.1.)
-        fix_com (bool): Whether the center of mass motion should be subtracted off of the position update. (Default
-            is True)
-        use_adagrad (bool): Whether to have the step size decay according to adagrad. (Default is False)
+        fix_com (bool): Whether the center of mass motion should be subtracted off of the position update.
+            (Default is True)
+        dynamic_gamma (bool): Whether to vary the step size (gamma) for each iteration based on line search.
+            (Default is True.)
+        c (float): A value between (0, 1) to scale the gradient. (Default is 0.1)
+        tau1 (float): A value between (0, 1) to scale up the gamma value. (Default is 1.)
+        tau1 (float): A value between (0, 1) to scale down the gamma value. (Default is 0.2)
+        sleep_time (float): A delay in seconds for database access of results. For sqlite, a non-zero delay maybe
+            required. (Default is 0 seconds, no delay.)
 
     Output attributes:
         energy_pot (list[float]): Total potential energy of the system in eV.
@@ -61,30 +67,38 @@ class NEB(CompoundVertex):
     """
 
     def __init__(self, **kwargs):
-        super(NEB, self).__init__(**kwargs)
+        super(NEBSerial, self).__init__(**kwargs)
 
         # Protocol defaults
         id_ = self.input.default
         id_.n_steps = 100
         id_.f_tol = 1e-4
         id_.spring_constant = 1.
-        id_.tangent_style = 'upwinding'
+        id_.tangent_style = "upwinding"
         id_.use_climbing_image = True
         id_.smoothing = None
         id_.gamma0 = 0.1
         id_.fix_com = True
-        id_.use_adagrad = False
+        id_.dynamic_gamma = True
+        id_.c = 0.1
+        id_.tau1 = 1.
+        id_.tau2 = 0.2
+        id_.sleep_time = 0.
 
     def define_vertices(self):
         # Graph components
         g = self.graph
-        g.initialize_jobs = CreateJob()
+        g.initialize_jobs = CreateSubJobs()
         g.interpolate_images = InitialPositions()
         g.check_steps = IsGEq()
-        g.calc_static = AutoList(ExternalHamiltonian)
+        g.check_convergence = IsLEq()
+        g.calc_static = SerialList(ExternalHamiltonian)
         g.neb_forces = NEBForces()
+        g.gamma = SerialList(GradientDescentGamma)
         g.gradient_descent = SerialList(GradientDescent)
+        g.post = NEBPostProcess()
         g.clock = Counter()
+        g.exit = AnyVertex()
 
     def define_execution_flow(self):
         # Execution flow
@@ -92,15 +106,21 @@ class NEB(CompoundVertex):
         g.make_pipeline(
             g.initialize_jobs,
             g.interpolate_images,
-            g.check_steps, 'false',
+            g.check_steps, "false",
             g.calc_static,
             g.neb_forces,
+            g.gamma,
             g.gradient_descent,
+            g.post,
             g.clock,
-            g.check_steps
+            g.check_convergence, "true",
+            g.exit
         )
-        g.starting_vertex = self.graph.initialize_jobs
-        g.restarting_vertex = self.graph.check_steps
+        g.make_edge(g.check_steps, g.exit, "true")
+        g.make_edge(g.check_convergence, g.check_steps, "false")
+        g.make_edge(g.exit, g.check_steps, "false")
+        g.starting_vertex = g.initialize_jobs
+        g.restarting_vertex = g.check_steps
 
     def define_information_flow(self):
         # Data flow
@@ -124,9 +144,8 @@ class NEB(CompoundVertex):
 
         # calc_static
         g.calc_static.input.n_children = ip.n_images
-        g.calc_static.direct.structure = ip.structure_initial
-        g.calc_static.broadcast.project_path = gp.initialize_jobs.output.project_path[-1]
-        g.calc_static.broadcast.job_name = gp.initialize_jobs.output.job_names[-1]
+        g.calc_static.broadcast.job_project_path = gp.initialize_jobs.output.jobs_project_path[-1]
+        g.calc_static.broadcast.job_name = gp.initialize_jobs.output.jobs_names[-1]
         g.calc_static.broadcast.default.positions = gp.interpolate_images.output.initial_positions[-1]
         g.calc_static.broadcast.positions = gp.gradient_descent.output.positions[-1]
 
@@ -142,16 +161,49 @@ class NEB(CompoundVertex):
         g.neb_forces.input.use_climbing_image = ip.use_climbing_image
         g.neb_forces.input.smoothing = ip.smoothing
 
+        # gamma
+        g.gamma.input.n_children = ip.n_images
+        g.gamma.broadcast.default.old_energy = gp.calc_static.output.energy_pot[-1]
+        g.gamma.broadcast.default.old_forces = gp.calc_static.output.forces[-1]
+        g.gamma.direct.default.gamma = ip.gamma0
+        g.gamma.direct.dynamic_gamma = ip.dynamic_gamma
+        g.gamma.direct.c = ip.c
+        g.gamma.direct.tau1 = ip.tau1
+        g.gamma.direct.tau2 = ip.tau2
+
+        g.gamma.broadcast.old_energy = gp.gamma.output.old_energy[-1]
+        g.gamma.broadcast.new_energy = gp.calc_static.output.energy_pot[-1]
+        g.gamma.broadcast.old_forces = gp.gamma.output.old_forces[-1]
+        g.gamma.broadcast.new_forces = gp.calc_static.output.forces[-1]
+        g.gamma.broadcast.gamma = gp.gamma.output.new_gamma[-1]
+
         # gradient_descent
         g.gradient_descent.input.n_children = ip.n_images
         g.gradient_descent.broadcast.default.positions = gp.interpolate_images.output.initial_positions[-1]
 
         g.gradient_descent.broadcast.positions = gp.gradient_descent.output.positions[-1]
         g.gradient_descent.broadcast.forces = gp.neb_forces.output.forces[-1]
+        g.gradient_descent.broadcast.gamma0 = gp.gamma.output.new_gamma[-1]
         g.gradient_descent.direct.masses = ip.structure_initial.get_masses
-        g.gradient_descent.direct.gamma0 = ip.gamma0
         g.gradient_descent.direct.fix_com = ip.fix_com
-        g.gradient_descent.direct.use_adagrad = ip.use_adagrad
+
+        # post
+        g.post.input.energy_pots = gp.calc_static.output.energy_pot[-1]
+        g.post.input.forces = gp.neb_forces.output.forces[-1]
+
+        # check_convergence
+        g.check_convergence.input.target = gp.post.output.force_norm[-1]
+        g.check_convergence.input.threshold = ip.f_tol
+
+        # exit
+        g.exit.input.vertex_states = [
+            gp.check_steps.vertex_state,
+            gp.check_convergence.vertex_state
+        ]
+        g.exit.input.print_strings = [
+            "Maximum steps ({}) reached. Stopping run.",
+            "Convergence reached in {} steps. Stopping run."]
+        g.exit.input.step = gp.clock.output.n_counts[-1]
 
         self.set_graph_archive_clock(gp.clock.output.n_counts[-1])
 
@@ -165,7 +217,7 @@ class NEB(CompoundVertex):
 
     def _get_energies(self, frame=None):
         if frame is None:
-            return self.graph.calc_static.output.energy_pot[-1]
+            return self.output.energy_pot[-1]
         else:
             return self.graph.calc_static.archive.output.energy_pot.data[frame]
 
@@ -193,17 +245,18 @@ class NEB(CompoundVertex):
         ax.set_ylabel("Energy")
         ax.set_xlabel("Image")
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+        plt.show()
         return ax
 
     def _get_directional_barrier(self, frame=None, anchor_element=0, use_minima=False):
-        energies = self._get_energies(frame=frame)
+        energies = np.array(self._get_energies(frame=frame))
         if use_minima:
-            reference = energies.min()
+            reference = min(energies)
         else:
             reference = energies[anchor_element]
-        return energies.max() - reference
+        return max(energies) - reference
 
-    def get_forward_barrier(self, frame=None, use_minima=False):
+    def _get_forward_barrier(self, frame=None, use_minima=False):
         """
         Get the energy barrier from the 0th image to the highest energy (saddle state).
 
@@ -217,7 +270,7 @@ class NEB(CompoundVertex):
         """
         return self._get_directional_barrier(frame=frame, use_minima=use_minima)
 
-    def get_reverse_barrier(self, frame=None, use_minima=False):
+    def _get_reverse_barrier(self, frame=None, use_minima=False):
         """
         Get the energy barrier from the final image to the highest energy (saddle state).
 
@@ -232,9 +285,36 @@ class NEB(CompoundVertex):
         return self._get_directional_barrier(frame=frame, anchor_element=-1, use_minima=use_minima)
 
     def get_barrier(self, frame=None, use_minima=True):
-        return self.get_forward_barrier(frame=frame, use_minima=use_minima)
-    get_barrier.__doc__ = get_forward_barrier.__doc__
+        return self._get_forward_barrier(frame=frame, use_minima=use_minima)
+    get_barrier.__doc__ = _get_forward_barrier.__doc__
 
 
-class ProtoNEBSer(Protocol, NEB):
+class ProtoNEBSer(Protocol, NEBSerial):
+    pass
+
+
+class NEBParallel(NEBSerial):
+    """
+    Parallel version of NEBSerial. Specifically to run with DFT calculators like VASP. For Lammps, NEBSerial is
+        much faster.
+    """
+
+    def define_vertices(self):
+        # Graph components
+        g = self.graph
+        ip = Pointer(self.input)
+        g.initialize_jobs = CreateSubJobs()
+        g.interpolate_images = InitialPositions()
+        g.check_steps = IsGEq()
+        g.check_convergence = IsLEq()
+        g.calc_static = ParallelList(ExternalHamiltonian, sleep_time=ip.sleep_time)
+        g.neb_forces = NEBForces()
+        g.gamma = SerialList(GradientDescentGamma)
+        g.gradient_descent = SerialList(GradientDescent)
+        g.post = NEBPostProcess()
+        g.clock = Counter()
+        g.exit = AnyVertex()
+
+
+class ProtoNEBPar(Protocol, NEBParallel):
     pass
