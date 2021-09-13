@@ -73,12 +73,14 @@ class QuantumToClassicalTemperature(GenericJob):
         self.input.temperatures = None
         self.input.structure = None
         self.input.potential = None
+        self.input.potential_type = "murnaghan"
         # potential generation
         self.input.potential_samples = 201
         self.input.strain_low = -0.12
-        self.input.strain_high = 1.
-        self.input.displacement_low = 0.50
-        self.input.displacement_high = 1.55
+        self.input.strain_high = 1.7
+        self.input.displacement_low = 0.8
+        self.input.displacement_high = 1.25
+        self.input.displacement_axis = [0., 2.025, 2.025]
         # internal
         self._atomic_mass = None
         self._n_atoms = None
@@ -97,7 +99,7 @@ class QuantumToClassicalTemperature(GenericJob):
         new_struct.pbc = [False, False, False]
         return new_struct
 
-    def generate_1d_potential(self):
+    def generate_diatom_potential(self):
         pr = self.project.create_group(self.job_name)
         self.output.diatom_structure = self.create_diatom(self.input.structure)
         base_pos = self.output.diatom_structure.positions.copy()
@@ -119,27 +121,54 @@ class QuantumToClassicalTemperature(GenericJob):
         self.status.finished = True
         self.output.nn_dist_ang = np.linalg.norm(pos_atom_1, axis=1)
         self.output.potential_ev = np.array(energy_pot).flatten()
+        self.output.potential_ev -= self.output.potential_ev.min()
 
-    # def generate_1d_potential(self):
-    #     pr = self.project.create_group(self.job_name)
-    #     strains = np.linspace(self.input.strain_low, self.input.strain_high,
-    #                                 self.input.potential_samples)
-    #     pot_job = pr.create.job.Lammps('pot_job')
-    #     pot_job.structure = self.input.structure.copy()
-    #     pot_job.potential = self.input.potential
-    #     pot_job.interactive_open()
-    #     pot_job.interactive_initialize_interface()
-    #     energy_pot = []
-    #     nn_dist = []
-    #     for strain in strains:
-    #         new_struct = self.input.structure.copy().apply_strain(strain, return_box=True)
-    #         nn_dist.append(np.linalg.norm(new_struct.positions[1]))
-    #         pot_job.interactive_structure_setter(new_struct)
-    #         pot_job._interactive_lib_command(pot_job._interactive_run_command)
-    #         energy_pot.append(pot_job.interactive_energy_pot_getter() / self._n_atoms)
-    #     self.status.finished = True
-    #     self.output.nn_dist_ang = np.array(nn_dist).flatten()
-    #     self.output.potential_ev = np.array(energy_pot).flatten()
+    def generate_murnaghan_potential(self):
+        pr = self.project.create_group(self.job_name)
+        strains = np.linspace(self.input.strain_low, self.input.strain_high, self.input.potential_samples)
+        pot_job = pr.create.job.Lammps('pot_job')
+        pot_job.structure = self.input.structure.copy()
+        pot_job.potential = self.input.potential
+        pot_job.interactive_open()
+        pot_job.interactive_initialize_interface()
+        energy_pot = []
+        nn_dist = []
+        for strain in strains:
+            new_struct = self.input.structure.copy().apply_strain(strain, return_box=True)
+            nn_dist.append(np.linalg.norm(new_struct.positions[1]))
+            pot_job.interactive_structure_setter(new_struct)
+            pot_job._interactive_lib_command(pot_job._interactive_run_command)
+            energy_pot.append(pot_job.interactive_energy_pot_getter() / self._n_atoms)
+        self.status.finished = True
+        self.output.nn_dist_ang = np.array(nn_dist).flatten()
+        self.output.potential_ev = np.array(energy_pot).flatten()
+        self.output.potential_ev -= self.output.potential_ev.min()
+
+    def generate_glensk_potential(self):
+        pr = self.project.create_group(self.job_name)
+        base_pos = self.input.structure.positions.copy()
+        displacements = np.linspace(self.input.displacement_low, self.input.displacement_high,
+                                    self.input.potential_samples)
+        pos_atom_1 = np.array([base_pos[1] * disp for disp in displacements])
+        pot_job = pr.create.job.Lammps('pot_job')
+        pot_job.structure = self.input.structure.copy()
+        pot_job.potential = self.input.potential
+        pot_job.interactive_open()
+        pot_job.interactive_initialize_interface()
+        force_atom_0 = []
+        for p in pos_atom_1:
+            new_pos = base_pos.copy()
+            new_pos[1] = p
+            pot_job.interactive_positions_setter(new_pos)
+            pot_job._interactive_lib_command(pot_job._interactive_run_command)
+            force_atom_0.append(pot_job.interactive_forces_getter()[0])
+        self.status.finished = True
+        force_atom_0 = np.array(force_atom_0)
+        force_along_011 = np.dot(force_atom_0, np.array(self.input.displacement_axis))
+        self.output.nn_dist_ang = np.linalg.norm(pos_atom_1, axis=1)
+        self.output.potential_ev = cumtrapz(force_along_011, x=self.output.nn_dist_ang)
+        self.output.potential_ev -= self.output.potential_ev.min()
+        self.output.nn_dist_ang = self.output.nn_dist_ang[1:]
 
     @staticmethod
     def convert_pyiron_to_atomic_units(distance=None, energy=None):
@@ -170,20 +199,24 @@ class QuantumToClassicalTemperature(GenericJob):
         self.output.pd_classical_all = np.array(self.output.pd_classical_all)
 
     def solve_TISD(self):
+        if self.input.potential_style == "glensk":
+            n_states = self.input.potential_samples - 2
+        else:
+            n_states = self.input.potential_samples - 1
         ham = Schroedinger_1D(x=self.output.nn_dist_bohr, pot=self.output.potential_H,
-                              n_states=self.input.potential_samples - 1, mass=self._atomic_mass)
+                              n_states=n_states, mass=self._atomic_mass)
         self.output.eigenvalues, self.output.eigenvectors = ham.solve()
 
     @staticmethod
     def _get_boltzmann_weighted_pd(eigenvalues, eigenvectors, potential, temperature):
         # truncate the eigens to that the eigenvalues are not greater than the maxima of the tail end of the potential
-        trunc_eigenvalues = eigenvalues[eigenvalues <= potential[-1]] - potential.min()
+        trunc_eigenvalues = eigenvalues[eigenvalues <= potential[-1]]
         trunc_eigenvectors = eigenvectors[eigenvalues <= potential[-1]]
         # get the occupation probability of each state - Boltzmann weighting
-        boltzmann = np.exp(-trunc_eigenvalues / (KB_HARTREE_PER_KELVIN * temperature))
+        boltzmann = np.exp(-(eigenvalues - potential.min()) / (KB_HARTREE_PER_KELVIN * temperature))
         boltzmann_weight = boltzmann / np.sum(boltzmann)  # !partition function!
         # get the weighted probability density
-        weight_pd = np.sum(boltzmann_weight[:, np.newaxis] * trunc_eigenvectors ** 2,
+        weight_pd = np.sum(boltzmann_weight[:, np.newaxis] * eigenvectors ** 2,
                            axis=0)  # probability density, which is square of the wavefunction
         # also return just the ground state for comparison
         ground_pd = eigenvectors[0] ** 2
@@ -209,14 +242,19 @@ class QuantumToClassicalTemperature(GenericJob):
 
     def get_equivalent_classical_temperature(self):
         fit_eqn = np.poly1d(np.polyfit(self.input.temperatures, self.output.energy_classical_ev, 4))
-        fine_temperatures = np.linspace(self.input.temperatures[0], self.input.temperatures[-1] + 100,
+        fine_temperatures = np.linspace(self.input.temperatures[0], self.input.temperatures[-1] + 1000,
                                         100000, endpoint=True)
         fine_expec_E_c = fit_eqn(fine_temperatures)
         self.output.equivalent_classical_temperatures = self.get_Tc(self.output.energy_quantum_ev, fine_temperatures,
                                                                     fine_expec_E_c)
 
     def run_static(self):
-        self.generate_1d_potential()
+        if self.input.potential_style == "diatom":
+            self.generate_diatom_potential()
+        elif self.input.potential_style == "murnaghan":
+            self.generate_murnaghan_potential()
+        elif self.input.potential_style == "glensk":
+            self.generate_glensk_potential()
         self.get_classical_pd()
         self.solve_TISD()
         self.get_quantum_pd()
@@ -233,7 +271,7 @@ class QuantumToClassicalTemperature(GenericJob):
             group_name (str): HDF5 subgroup name - optional
         """
         super(QuantumToClassicalTemperature, self).to_hdf(hdf=hdf, group_name=group_name)
-        self.input.to_hdf(self.project_hdf5)
+        # self.input.to_hdf(self.project_hdf5)
         self.output.to_hdf(self.project_hdf5)
 
     def from_hdf(self, hdf=None, group_name=None):

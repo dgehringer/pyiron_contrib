@@ -201,10 +201,10 @@ class FreeEnergy(GenericJob):
             self._cleanup_job(self._phonopy_job)
         print("Getting force constants and reference QH free energy...")
         try:
-            therm_prop = self._phonopy_job.get_thermal_properties(temperatures=self.input.quantum_temperature)
+            therm_prop = self._phonopy_job.get_thermal_properties(temperatures=self.input.classical_temperature)
         except AttributeError:
             self.output.phonopy_job = self.project.load(self._phonopy_job.job_name)
-            therm_prop = self._phonopy_job.get_thermal_properties(temperatures=self.input.quantum_temperature)
+            therm_prop = self._phonopy_job.get_thermal_properties(temperatures=self.input.classical_temperature)
         self.output.fe_quantum_harm = therm_prop.free_energies.flatten()
         self.output.force_constants = self._phonopy_job.phonopy.force_constants
 
@@ -322,7 +322,7 @@ class FreeEnergy(GenericJob):
         """
         if (self.input.reference_oscillator == 'einstein_classical') or \
                 (self.input.reference_oscillator == 'debye_classical'):
-            fe_ref = self.output.fe_quantum_harm
+            fe_ref = self.output.fe_classical_harm
         elif self.input.reference_oscillator == 'debye_quantum':
             fe_ref = self.output.fe_quantum_harm
         else:
@@ -343,21 +343,21 @@ class FreeEnergy(GenericJob):
         self.run_npt_md()
         self.run_md_analysis()
         self.minimize_structure()
-        self.get_center_of_mass_correction()
-        if self.input.reference_oscillator == 'einstein_classical':
-            self.get_spring_constants()
-        elif (self.input.reference_oscillator == 'debye_classical') or \
-                (self.input.reference_oscillator == 'debye_quantum'):
-            self.run_phonopy()
-            self.get_phonopy_output()
-            self.get_phonopy_spring_constants()
-        else:
-            raise ValueError
-        self.get_classical_harmonic_free_energy()
-        self.get_quantum_harmonic_free_energy()
-        self.run_reference_to_eam_tild()
-        self.get_tild_output(plot_integrands=True)
-        self.get_G_per_atom()
+        # self.get_center_of_mass_correction()
+        # if self.input.reference_oscillator == 'einstein_classical':
+        #     self.get_spring_constants()
+        # elif (self.input.reference_oscillator == 'debye_classical') or \
+        #         (self.input.reference_oscillator == 'debye_quantum'):
+        #     self.run_phonopy()
+        #     self.get_phonopy_output()
+        #     self.get_phonopy_spring_constants()
+        # else:
+        #     raise ValueError
+        # self.get_classical_harmonic_free_energy()
+        # self.get_quantum_harmonic_free_energy()
+        # self.run_reference_to_eam_tild()
+        # self.get_tild_output(plot_integrands=True)
+        # self.get_G_per_atom()
         self.to_hdf(self.project_hdf5)
         print("DONE")
 
@@ -370,7 +370,7 @@ class FreeEnergy(GenericJob):
             group_name (str): HDF5 subgroup name - optional
         """
         super(FreeEnergy, self).to_hdf(hdf=hdf, group_name=group_name)
-        self.input.to_hdf(self.project_hdf5)
+        # self.input.to_hdf(self.project_hdf5)
         self.output.to_hdf(self.project_hdf5)
 
     def from_hdf(self, hdf=None, group_name=None):
