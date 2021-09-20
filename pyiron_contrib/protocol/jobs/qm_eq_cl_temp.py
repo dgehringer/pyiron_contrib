@@ -76,7 +76,7 @@ class QuantumToClassicalTemperature(GenericJob):
         self.input.potential_type = "murnaghan"
         # potential generation
         self.input.potential_samples = 201
-        self.input.strain_low = -0.12
+        self.input.strain_low = -0.2
         self.input.strain_high = 1.7
         self.input.displacement_low = 0.8
         self.input.displacement_high = 1.25
