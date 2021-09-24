@@ -82,7 +82,7 @@ class MurnaghanPotential(_ParentPotential):
         self.output.lattice_constant_a = []
         for strain in strains:
             new_struct = self.input.structure.copy().apply_strain(strain, return_box=True)
-            self.output.lattice_constant_a.append(new_struct.get_symmetry_dataset()['std_lattice'][0][0])
+            self.output.lattice_constant_a.append(np.linalg.norm(new_struct.positions[1]))
             job.interactive_structure_setter(new_struct)
             job._interactive_lib_command(job._interactive_run_command)
             self.output.energy_pot.append(job.interactive_energy_pot_getter() / len(self.input.structure))
