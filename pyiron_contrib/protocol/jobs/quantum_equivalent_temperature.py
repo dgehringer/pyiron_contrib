@@ -7,7 +7,7 @@ from pyiron_base.generic.datacontainer import DataContainer
 
 import numpy as np
 from scipy.constants import physical_constants
-from scipy.interpolate import CubicSpline
+from scipy.optimize import minimize
 
 from pyiron_continuum.schroedinger.mesh import RectMesh
 from pyiron_continuum.schroedinger.schroedinger import TISE
@@ -56,31 +56,27 @@ class QuantumEquivalentTemperature(GenericJob):
             self._tise_job = self.project.load('tise_job')
         self.output.pd_quantum = []
         for temp in self.input.temperatures:
-            pd_schroed = self._tise_job.output.get_boltzmann_rho(temperature=temp)
-            self.output.pd_quantum.append(pd_schroed)
+            self.output.pd_quantum.append(self._tise_job.output.get_boltzmann_rho(temperature=temp))
         self.output.pd_quantum = np.array(self.output.pd_quantum)
 
-    def get_expectations(self):
-        self.output.ex_mesh_classical = np.sum(self.output.pd_classical * self.input.mesh, axis=1)
-        self.output.ex_mesh_quantum = np.sum(self.output.pd_quantum * self.input.mesh, axis=1)
-
-    @staticmethod
-    def get_equivalent_temperature(temperatures, class_x, quant_x):
-        fit_eqn = CubicSpline(x=temperatures, y=class_x)
-        fine_temperatures = np.linspace(temperatures[0], temperatures[-1] + 200, 100000, endpoint=True)
-        fine_class_x = fit_eqn(fine_temperatures)
-        return np.array([fine_temperatures[np.argmin(np.abs(fine_class_x - q))] for q in quant_x])
-
     def get_equivalent_classical_temperature(self):
-        self.output.equivalent_classical_temperatures = self.get_equivalent_temperature(self.input.temperatures,
-                                                                                        self.output.ex_mesh_classical,
-                                                                                        self.output.ex_mesh_quantum)
+        potential = self.input.potential - self.input.potential.min()
+        def minimize_func(x):
+            cl= np.exp(-potential / (KB * x))
+            cl /= cl.sum()
+            return np.sum((cl - qu) ** 2)
+
+        cl_eq_temp = []
+        for i, temp in enumerate(self.input.temperatures):
+            qu = self.output.pd_quantum[i]
+            val = minimize(minimize_func, x0=temp, method='Nelder-Mead', tol=1e-10)
+            cl_eq_temp.append(val.x[-1])
+        self.output.equivalent_classical_temperatures = np.array(cl_eq_temp)
 
     def run_static(self):
         self.get_classical_pd()
         self.run_TISE_job()
         self.get_TISE_job_output()
-        self.get_expectations()
         self.get_equivalent_classical_temperature()
         self.to_hdf(self.project_hdf5)
 
