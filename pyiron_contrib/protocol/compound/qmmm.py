@@ -270,6 +270,32 @@ class QMMM(CompoundVertex):
             'positions': positions
         }
 
+    @staticmethod
+    def _get_visualization_colors(
+            structure: Atoms, lut: Dict[str, Indices], default_color: str = 'darkgrey',
+            color_map: Optional[Dict[str, str]] = None) -> List[str]:
+        """
+        takes a structure and a look-up-table {lut} to create a list of string in HTML colors to visualize the
+        different regions of the QM or MM structure
+
+        Args:
+            structure (Atoms): the QM or MM structure
+            lut (dict): a dictionary with region names "core", "seed" etc. and the corresponding indices
+            default_color (str): color for atoms not belonging to a specific region such as e. g. "core"
+            color_map (dict): a mapping of region names an HTML colors
+
+        Returns:
+            (list): a list of HTML color names of length len(structure)
+
+        """
+        color_map = color_map or dict(seed='green', core='blue', buffer='red', filler='goldenrod')
+        colors = np.array([default_color] * len(structure), dtype=object)
+
+        for group in ('seed', 'core', 'buffer', 'filler'):
+            colors[lut[group]] = color_map.get(group)
+
+        return colors.tolist()
+
     def show_mm(self):
         try:
             mm_full_structure = self.graph.partition.output.mm_full_structure[-1]
@@ -280,11 +306,7 @@ class QMMM(CompoundVertex):
             mm_full_structure = partitioned['mm_full_structure']
             domain_ids = partitioned['domain_ids']
 
-        color = 4 * np.ones(len(mm_full_structure))  # This 5th colour makes the balance of atoms
-        for n, group in enumerate(['seed', 'core', 'buffer', 'filler']):
-            color[domain_ids[group]] = n
-
-        return mm_full_structure.plot3d(scalar_field=color)
+        return mm_full_structure.plot3d(colors=self._get_visualization_colors(mm_full_structure, domain_ids))
 
     def show_qm(self):
         try:
@@ -296,11 +318,7 @@ class QMMM(CompoundVertex):
             qm_structure = partitioned['qm_structure']
             domain_ids_qm = partitioned['domain_ids_qm']
 
-        color = 4 * np.ones(len(qm_structure))  # If you see this 5th colour, something is wrong
-        for n, group in enumerate(['seed', 'core', 'buffer', 'filler']):
-            color[domain_ids_qm[group]] = n
-
-        return qm_structure.plot3d(scalar_field=color)
+        return qm_structure.plot3d(colors=self._get_visualization_colors(qm_structure, domain_ids_qm))
 
     def show_boxes(self):
         try:
@@ -378,7 +396,7 @@ class QMMM(CompoundVertex):
             axis.set_aspect('equal')
             axis.title.set_text('{} plane'.format(plane))
             indices = [axis_mapping[a] for a in plane]
-            for j, (cell, color, translation) in enumerate(zip(cells, colors, translate)):
+            for cell, color, translation in zip(cells, colors, translate):
                 calc = lambda mul_, cell_: sum([m_ * vec_ for m_, vec_ in zip(mul_, cell_)])
                 coords = [(calc(start, cell) + translation, calc(end, cell) + translation) for start, end in edges]
                 for start, end in coords:
@@ -571,8 +589,9 @@ class PartitionStructure(PrimitiveVertex):
     def _build_shells(structure, n_shells, shell_cutoff, seed_ids):
         indices = [seed_ids]
         current_shell_ids = seed_ids
+        shell_cutoff = np.inf if shell_cutoff is None else shell_cutoff
         for _ in range(n_shells):
-            neighbors = structure.get_neighbors(id_list=current_shell_ids, cutoff=shell_cutoff)
+            neighbors = structure.get_neighbors(id_list=current_shell_ids, cutoff_radius=shell_cutoff)
             new_ids = np.setdiff1d(
                 np.unique(np.concatenate(neighbors.indices)),
                 np.concatenate(indices)
