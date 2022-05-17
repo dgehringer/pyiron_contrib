@@ -3,6 +3,7 @@
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
 from __future__ import print_function
+import warnings
 
 import numpy as np
 from os.path import split
@@ -13,6 +14,7 @@ from scipy.integrate import simps
 from ase.geometry import get_distances
 
 from pyiron_atomistics import Project
+from pyiron_atomistics.vasp.vasp import Vasp
 from pyiron_atomistics.atomistics.job.interactive import GenericInteractive
 from pyiron_atomistics.lammps.lammps import LammpsInteractive
 from pyiron_contrib.protocol.generic import PrimitiveVertex
@@ -155,6 +157,9 @@ class DeleteAtom(PrimitiveVertex):
 
 
 class ExternalHamiltonian(PrimitiveVertex):
+
+    interactive_library_handles = dict()
+
     """
     Manages calls to an external interpreter (e.g. Lammps, Vasp, Sphinx...) to produce energies, forces,
         and possibly other properties. The collected output can be expanded beyond forces and energies
@@ -196,6 +201,26 @@ class ExternalHamiltonian(PrimitiveVertex):
         id_.cell = None
         id_.interesting_keys = ['positions', 'forces', 'energy_pot', 'pressures', 'volume', 'cell']
 
+
+    @classmethod
+    def _ensure_interactive_interface_is_activated(cls, job, pass_handle_for=(Vasp,)):
+        """
+        Helper method to ensure that interactive module does not spawn multiple instances of the binary
+        """
+        if isinstance(job, pass_handle_for):
+            interactive_library_handle = cls.interactive_library_handles.get(job.job_name, None)
+            if interactive_library_handle:
+                warnings.warn(f'Found an interactive job with identifier "{job.job_name}" earlier. I am going to propagate the interactive handle')
+                job._interactive_library = interactive_library_handle
+        
+        if not job.interactive_is_activated():
+            job.interactive_initialize_interface()
+
+        if isinstance(job, pass_handle_for):
+            if hasattr(job, '_interactive_library'):
+                cls.interactive_library_handles[job.job_name] = job._interactive_library
+                print('saving_handle', cls.interactive_library_handles)    
+
     def command(self, ref_job_full_path, project_path, job_name, structure, positions, cell, interesting_keys):
 
         if self._job_project_path is None:
@@ -210,19 +235,20 @@ class ExternalHamiltonian(PrimitiveVertex):
                 self._job_name = job_name
             else:
                 raise AttributeError('Please specify valid project path OR ref_job_full_path, but not both!')
-
+        
         if self._job is None:
             self._reload()
         elif not self._job.interactive_is_activated():
             self._job.status.running = True
             self._job.interactive_open()
-            self._job.interactive_initialize_interface()
+        self._ensure_interactive_interface_is_activated(self._job)
 
         if isinstance(self._job, LammpsInteractive) and self._fast_lammps_mode:
             if positions is not None:
                 self._job.interactive_positions_setter(positions)
             if cell is not None:
                 self._job.interactive_cells_setter(cell)
+            
             self._job._interactive_lib_command(self._job._interactive_run_command)
         elif isinstance(self._job, GenericInteractive):
             # DFT codes are slow enough that we can run them the regular way and not care
@@ -236,10 +262,11 @@ class ExternalHamiltonian(PrimitiveVertex):
         else:
             raise TypeError('Job of class {} is not compatible.'.format(self._job.__class__))
 
-        return {key: self._get_interactive_value(key) for key in interesting_keys}
+        return {key: self._get_interactive_value(key) for key in interesting_keys} 
 
-    @staticmethod
-    def _initialize(graph_location, ref_job_full_path, structure, fast_lammps_mode, name=None):
+
+    @classmethod
+    def _initialize(cls, graph_location, ref_job_full_path, structure, fast_lammps_mode, name=None):
         """
         Initialize / create the interactive job and save it.
         """
@@ -264,6 +291,7 @@ class ExternalHamiltonian(PrimitiveVertex):
                 job.interactive_flush_frequency = 10 ** 10
                 job.interactive_write_frequency = 10 ** 10
             job.calc_static()
+            cls._ensure_interactive_interface_is_activated(job)
             job.run()
         else:
             raise TypeError('Job of class {} is not compatible.'.format(ref_job.__class__))
@@ -277,7 +305,7 @@ class ExternalHamiltonian(PrimitiveVertex):
         pr = Project(path=self._job_project_path)
         self._job = pr.load(self._job_name)
         self._job.interactive_open()
-        self._job.interactive_initialize_interface()
+        self._ensure_interactive_interface_is_activated(self._job)
 
     def _get_interactive_value(self, key):
         """
@@ -290,7 +318,10 @@ class ExternalHamiltonian(PrimitiveVertex):
         elif key == 'energy_pot':
             val = self._job.interactive_energy_pot_getter()
         elif key == 'pressures':
-            val = np.array(self._job.interactive_pressures_getter())
+            try:
+                val =  np.array(self._job.interactive_pressures_getter())
+            except NotImplementedError:
+                val = None
         elif key == 'volume':
             val = self._job.interactive_volume_getter()
         elif key == 'cell':
