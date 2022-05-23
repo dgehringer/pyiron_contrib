@@ -6,7 +6,7 @@ from __future__ import print_function
 import sys
 from pyiron_base import GenericJob
 from pyiron_contrib.protocol.utils import IODictionary, InputDictionary, LoggerMixin, Event, EventHandler, \
-    Pointer, CrumbType, ordered_dict_get_last, Comparer, TimelineDict
+    Pointer, ordered_dict_get_last, Comparer, TimelineDict
 # from pyiron_contrib.protocol.utils.types import PyironJobTypeRegistry
 from pyiron_contrib.protocol.utils.pptree import print_tree as pptree
 from abc import ABC, abstractmethod
@@ -755,6 +755,8 @@ class Graph(dict, LoggerMixin):
         try:
             from graphviz import Digraph
         except ImportError as import_error:
+            import warnings
+            warnings.warn('Visualization requires the "graphiz" package to install')
             self.logger.exception('Failed to import "graphviz" package', exc_info=import_error)
             return
 
@@ -824,7 +826,7 @@ class Graph(dict, LoggerMixin):
                             if isinstance(vertex_end, Vertex):
                                 workflow.edge(vertex_end.vertex_name, vertex_name, label=key, **dataflow_edge_style)
                             elif isinstance(vertex_end, (IODictionary, Vertex)):
-                                self.logger.warning('vertex_end is IODIctionary() I have to decide what to do')
+                                self.logger.warning('vertex_end is IODictionary() I have to decide what to do')
                                 if protocol_input_node is None:
                                     # Initialize a node for protocol level input
                                     protocol_input_node = workflow.node(
@@ -838,40 +840,19 @@ class Graph(dict, LoggerMixin):
 
         return workflow
 
-    def _edge_from_pointer(self, key, p):
-        assert isinstance(p, Pointer)
-        path = p.path.copy()
-        root = path.pop(0)
+    def _edge_from_pointer(self, key, p: Pointer):
+        access_function = p.funcs
+        num_hops = len(access_function)
 
-        result = root.object
-        while len(path) > 0:
-            crumb = path.pop(0)
-            crumb_type = crumb.crumb_type
-            crumb_name = crumb.name
+        for i in range(1, num_hops+1):
+            try:
+                value = ~Pointer(self.args, funcs=access_function[-i:])
+            except (AttributeError, KeyError, IndexError):
+                continue
+            else:
+                if isinstance(value, (Vertex, IODictionary)):
+                    return value
 
-            if isinstance(result, (Vertex, IODictionary)):
-                return result
-
-            # If the result is a pointer itself we have to resolve it first
-            if isinstance(result, Pointer):
-                self.logger.info('Resolved pointer in a pointer path')
-                result = ~result
-            if isinstance(crumb_name, Pointer):
-                self.logger.info('Resolved pointer in a pointer path')
-                crumb_name = ~crumb_name
-            # Resolve it with the correct method - dig deeper
-            if crumb_type == CrumbType.Attribute:
-                try:
-                    result = getattr(result, crumb_name)
-                except AttributeError as e:
-                    raise e
-            elif crumb_type == CrumbType.Item:
-                try:
-                    result = result.__getitem__(crumb_name)
-                except (TypeError, KeyError) as e:
-                    raise e
-
-        # If we reached this point we have no Command at all, give a warning
         self.logger.warning('I could not find a graph in the pointer {} for key "{}"'.format(p.path, key))
         return None
 

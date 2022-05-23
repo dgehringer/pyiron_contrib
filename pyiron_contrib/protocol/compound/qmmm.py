@@ -220,7 +220,7 @@ class QMMM(CompoundVertex):
         g.gradient_descent_mm.input.forces = gp.calc_static_mm.output.forces[-1]
         g.gradient_descent_mm.input.default.positions = gp.partition.output.mm_full_structure[-1].positions
         g.gradient_descent_mm.input.positions = gp.update_core_mm.output.positions[-1]
-        g.gradient_descent_mm.input.masses = gp.partition.output.mm_full_structure[-1].get_masses
+        g.gradient_descent_mm.input.masses = gp.partition.output.mm_full_structure[-1].get_masses()
         g.gradient_descent_mm.input.mask = gp.partition.output.domain_ids[-1]['except_core']
         g.gradient_descent_mm.input.gamma0 = ip.gamma0
         g.gradient_descent_mm.input.fix_com = ip.fix_com
@@ -229,7 +229,7 @@ class QMMM(CompoundVertex):
         g.gradient_descent_qm.input.forces = gp.calc_static_qm.output.forces[-1]
         g.gradient_descent_qm.input.default.positions = gp.partition.output.qm_structure[-1].positions
         g.gradient_descent_qm.input.positions = gp.update_buffer_qm.output.positions[-1]
-        g.gradient_descent_qm.input.masses = gp.partition.output.qm_structure[-1].get_masses
+        g.gradient_descent_qm.input.masses = gp.partition.output.qm_structure[-1].get_masses()
         g.gradient_descent_qm.input.mask = gp.partition.output.domain_ids_qm[-1]['only_core']
         g.gradient_descent_qm.input.gamma0 = ip.gamma0
         g.gradient_descent_qm.input.fix_com = ip.fix_com
@@ -363,7 +363,7 @@ class QMMM(CompoundVertex):
             colors (list): list of colors for each cell in the list. e.g ['b', 'g', 'y'] or 'bgky'
             titles (list): list of names displayed for each cell. list of str
             default_color (str): if colors is not specified this color will be applied to all cells
-            size (float,float): A tuple of two float specifiyng the size of the plot in centimeters
+            size (float,float): A tuple of two float specifying the size of the plot in centimeters
 
         Returns:
             matplotlib.figure: The figure which will be displayed
