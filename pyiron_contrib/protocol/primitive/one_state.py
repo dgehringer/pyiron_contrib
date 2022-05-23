@@ -201,7 +201,6 @@ class ExternalHamiltonian(PrimitiveVertex):
         id_.cell = None
         id_.interesting_keys = ['positions', 'forces', 'energy_pot', 'pressures', 'volume', 'cell']
 
-
     @classmethod
     def _ensure_interactive_interface_is_activated(cls, job, pass_handle_for=(Vasp,)):
         """
@@ -219,7 +218,6 @@ class ExternalHamiltonian(PrimitiveVertex):
         if isinstance(job, pass_handle_for):
             if hasattr(job, '_interactive_library'):
                 cls.interactive_library_handles[job.job_name] = job._interactive_library
-                print('saving_handle', cls.interactive_library_handles)    
 
     def command(self, ref_job_full_path, project_path, job_name, structure, positions, cell, interesting_keys):
 
@@ -263,7 +261,6 @@ class ExternalHamiltonian(PrimitiveVertex):
             raise TypeError('Job of class {} is not compatible.'.format(self._job.__class__))
 
         return {key: self._get_interactive_value(key) for key in interesting_keys} 
-
 
     @classmethod
     def _initialize(cls, graph_location, ref_job_full_path, structure, fast_lammps_mode, name=None):
