@@ -4,12 +4,19 @@
 
 from __future__ import print_function
 
+from typing import Dict, Union, List, Optional, Tuple
+from pyiron_atomistics.atomistics.structure.atoms import Atoms
 from pyiron_contrib.protocol.generic import PrimitiveVertex, CompoundVertex, Protocol
 from pyiron_contrib.protocol.utils import ensure_iterable
 from pyiron_contrib.protocol.primitive.one_state import ExternalHamiltonian, Counter, Norm, Max, GradientDescent
 from pyiron_contrib.protocol.primitive.two_state import IsGEq, IsLEq
-from pyiron_contrib.protocol.utils import Pointer, IODictionary
+from pyiron_contrib.protocol.utils import Pointer
 import numpy as np
+
+Array = Union[np.ndarray, List]
+Indices = Union[np.ndarray, List[int]]
+Cell = Union[np.ndarray, List[List[float]]]
+Number = Union[float, int]
 
 """
 Protocol for running the force-based quantum mechanics/molecular mechanics concurrent coupling scheme described in 
@@ -344,7 +351,10 @@ class QMMM(CompoundVertex):
         )
 
     @staticmethod
-    def _plot_boxes(cells, translate=None, colors=None, titles=None, default_color='b', size=(29, 21)):
+    def _plot_boxes(
+            cells: Union[Cell, List[Cell]], translate=None,
+            colors: Optional[List[str]] = None, titles: Optional[List[str]] = None, default_color: str = 'b',
+            size: Tuple[Number, Number] = (29, 21)):
         """
         Plots one or a list of cells in xy, yz and xt projection
         Args:
@@ -411,13 +421,29 @@ class QMMM(CompoundVertex):
 
 
 class AddDisplacements(PrimitiveVertex):
+    """
+    Represents a vertex which moves atoms in a structure. It takes the {target} structures positions and the
+    corresponding displacements. {target_mask} is indicates that only subset of the atoms are moved. {displacement_mask}
+    """
 
-    def __init__(self, name=None):
+    def __init__(self, name: Optional[str] = None):
         super(AddDisplacements, self).__init__(name=name)
         self.input.default.target_mask = None
         self.input.default.displacement_mask = None
 
-    def command(self, target, displacement, target_mask, displacement_mask):
+    def command(self, target: Array, displacement: Array, target_mask: Optional[Array], displacement_mask: Optional[Array]) -> Dict[str, np.ndarray]:
+        """
+        Moves (a subset) of the atoms in a structure. If {displacement_mask} is specified it must match the length of
+        target mask
+        Args:
+            target (numpy.ndarray/list): the positions of the atoms to move
+            displacement (numpy.ndarray/list): the displacements to add to the {target} positions
+            target_mask (numpy.ndarray/list): an optional mask used for slicing the {target} positions
+            displacement_mask (numpy.ndarray/list): an optional masks used for slicing {displacement}s
+
+        Returns:
+            dict: a dictionary with a "positions" key holding an np.ndarray with the new positions
+        """
         result = target.copy()
         if target_mask is not None and isinstance(target_mask, list):
             target_mask = np.concatenate(target_mask)
@@ -438,9 +464,10 @@ class AddDisplacements(PrimitiveVertex):
 
 class PartitionStructure(PrimitiveVertex):
     """
-
+    Vertex to partition a structure into a QM and MM domain
     """
-    def __init__(self, name=None):
+
+    def __init__(self, name: Optional[str] = None):
         super(PartitionStructure, self).__init__(name=name)
         id_ = self.input.default
         id_.domain_ids = None
@@ -452,11 +479,11 @@ class PartitionStructure(PrimitiveVertex):
 
     def command(
             self,
-            structure,
-            domain_ids,
-            seed_ids, shell_cutoff, n_core_shells, n_buffer_shells,
-            vacuum_width, filler_width,
-            seed_species
+            structure: Atoms,
+            domain_ids: Optional[Indices],
+            seed_ids: Indices, shell_cutoff: float, n_core_shells: int, n_buffer_shells: int,
+            vacuum_width: float, filler_width: float,
+            seed_species: List[str]
     ):
         domain_ids, domain_ids_qm, mm_small_structure = self._set_qm_structure(
             structure,
@@ -477,11 +504,11 @@ class PartitionStructure(PrimitiveVertex):
 
     def _set_qm_structure(
             self,
-            superstructure,
-            domain_ids,
-            seed_ids, shell_cutoff, n_core_shells, n_buffer_shells,
-            vacuum_width, filler_width
-    ):
+            superstructure: Atoms,
+            domain_ids: Optional[Indices],
+            seed_ids: Indices, shell_cutoff: float, n_core_shells: int, n_buffer_shells: int,
+            vacuum_width: float, filler_width: float
+    ) -> Tuple[Dict[str, Indices], Dict[str, Indices], Atoms]:
         if domain_ids is not None and seed_ids is not None:
             raise ValueError('Only *one* of `seed_ids` and `domain_ids` may be provided.')
         elif domain_ids is not None:
@@ -553,14 +580,25 @@ class PartitionStructure(PrimitiveVertex):
         return domain_ids, domain_ids_qm, qm_structure
 
     @staticmethod
-    def _change_qm_species(qm_structure, domain_ids_qm, seed_species):
+    def _change_qm_species(qm_structure: Atoms, domain_ids_qm: Dict[str, Indices], seed_species: List[str]) -> Atoms:
+        """
+        Changes the species of a seed atom
+
+        Args:
+            qm_structure (Atoms): the QM structure where to change the species
+            domain_ids_qm (dict): indices for the regions, corresponding to {qm_structure}
+            seed_species (str): a list of species with the new species
+
+        Returns:
+            (Atoms): the QM structure with changed species for seed atoms
+        """
         qm_structure_alchemized = qm_structure.copy()
         for index, species in zip(domain_ids_qm['seed'], seed_species):
             qm_structure_alchemized[index] = species
         return qm_structure_alchemized
 
     @staticmethod
-    def _get_ids_within_box(structure, box):
+    def _get_ids_within_box(structure: Atoms, box: np.ndarray) -> np.ndarray:
         """
         Finds all the atoms in a structure who have a periodic image inside the bounding box.
 
@@ -603,7 +641,7 @@ class PartitionStructure(PrimitiveVertex):
         return indices
 
     @staticmethod
-    def _get_bounding_box(structure):
+    def _get_bounding_box(structure: Atoms):
         """
         Finds the smallest rectangular prism which encloses all atoms in the structure after accounting for periodic
         boundary conditions.
@@ -633,7 +671,18 @@ class PartitionStructure(PrimitiveVertex):
         return bounding_box
 
     @staticmethod
-    def _except_core(structure, domain_ids):
+    def _except_core(structure: Atoms, domain_ids: Dict[str, Indices]) -> Indices:
+        """
+        Computes the indices of all atoms which do not belong to the "core" region.
+
+        Args:
+            structure (Atoms): the atoms object
+            domain_ids (dict): the domain IDs
+
+        Returns:
+            (np.ndarray): the id's of the atoms not belonging to the core region
+
+        """
         seed_ids = np.array(domain_ids['seed'])
         core_ids = np.array(domain_ids['core'])
         return np.setdiff1d(np.arange(len(structure)), np.concatenate([seed_ids, core_ids]))
