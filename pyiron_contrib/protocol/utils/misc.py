@@ -3,11 +3,19 @@ from __future__ import print_function
 # Copyright (c) Max-Planck-Institut für Eisenforschung GmbH - Computational Materials Design (CM) Department
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
+import collections.abc
 from logging import getLogger
-from inspect import getargspec
-from pydoc import locate
-from itertools import islice
-import re
+from typing import Any, Tuple, Type
+
+exclude_types = (str, bytes, dict, list, set, frozenset)
+
+try:
+    import numpy as np
+except ImportError:
+    pass
+else:
+    exclude_types += (np.ndarray, )
+
 """
 Classes for handling protocols, particularly setting up input and output pipes.
 """
@@ -21,19 +29,6 @@ __email__ = "huber@mpie.de"
 __status__ = "development"
 __date__ = "18 July, 2019"
 
-
-
-def ordered_dict_get_index(ordered_dict, index):
-    """
-    Gets the object at "index" of an collections.OrderedDict without copying the keys list
-    Args:
-        ordered_dict: (collections.OrderedDict) the dict to get the value from
-        index: (int) the index
-
-    Returns: (object) the object at "index"
-
-    """
-    return ordered_dict[next(islice(ordered_dict, index, None))]
 
 def ordered_dict_get_last(ordered_dict):
     """
@@ -69,26 +64,6 @@ class LoggerMixin(object):
         return getLogger(self.fullname())
 
 
-def requires_arguments(func):
-    """
-    Determines if a function of method needs arguments, ingores self
-
-    Args:
-        func: (callable) the callable
-
-    Returns: (bool) wether arguments (except "self" for methods) are needed
-
-    """
-    args, varargs, varkw, defaults = getargspec(func)
-    if defaults:
-        args = args[:-len(defaults)]
-    # It could be a bound method too
-    if 'self' in args:
-        args.remove('self')
-    return len(args) > 0
-
-flatten = lambda l: [item for sublist in l for item in sublist]
-
 def fullname(obj):
     """
     Returns the fully qualified class name of an object
@@ -103,29 +78,12 @@ def fullname(obj):
     return '{}.{}'.format(obj_type.__module__, obj_type.__name__)
 
 
-def get_cls(string):
-    return locate([v for v in re.findall(r'(?!\.)[\w\.]+(?!\.)', string)if v != 'class'][0])
-
-
-def is_iterable(o):
-    """
-    Convenience method to test for an iterator
-
-    Args:
-        o: the object to test
-
-    Returns:
-        bool: wether the input argument is iterable or not
-    """
-    try:
-        iter(o)
-    except TypeError:
-        return False
-    else:
-        return not isinstance(o, str)
-
 # convenience function to ensure the passed argument is iterable
-ensure_iterable = lambda v: v if is_iterable(v) else [v]
+def ensure_iterable(o: Any, factory: Type = tuple, exclude: Tuple[Type, ...] = exclude_types):
+    if isinstance(o, collections.abc.Iterable):
+        return o if not isinstance(o, exclude) else factory((o,))
+    else:
+        return factory((o,))
 
 
 class Registry(type):
@@ -134,4 +92,4 @@ class Registry(type):
         if not hasattr(cls, 'registry'):
             cls.registry = set()
         cls.registry.add(cls)
-        cls.registry -= set(bases) # Remove base classes
+        cls.registry -= set(bases)  # Remove base classes
