@@ -72,14 +72,14 @@ def print_tree(current_node, indent='', last='downup', name='root', file=sys.std
         print_tree(child, next_indent, next_last, name=childname, file=file)
 
     # Printing of current node
-    if last == 'up': start_shape = '┌'
-    elif last == 'down': start_shape = '└'
-    elif last == 'updown': start_shape = ' '
-    else: start_shape = '├'
+    start_shape = dict(up='┌', down='└', updown=' ').get(last, '├')
 
-    if up: end_shape = '┤'
-    elif down: end_shape = '┐'
-    else: end_shape = ''
+    if up:
+        end_shape = '┤'
+    elif down:
+        end_shape = '┐'
+    else:
+        end_shape = ''
 
     print('{0}{1}{2}{3}'.format(indent, start_shape, name, end_shape), file=file)
 

@@ -148,7 +148,7 @@ class ListVertex(PrimitiveVertex):
 
 class ParallelList(ListVertex):
     """
-    A list of commands which are executed in in parallel. The current implementation uses multiprocessing.Pool.
+    A list of commands which are executed in parallel. The current implementation uses multiprocessing.Pool.
 
     Attributes:
         pool (multiprocessing.Pool): Define the number of workers that will be utilized to run the child jobs.
