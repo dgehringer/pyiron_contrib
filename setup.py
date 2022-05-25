@@ -34,7 +34,7 @@ setup(
         'matplotlib==3.5.2',
         'numpy==1.22.3',
         'pyiron_base==0.5.12',
-        'scipy==1.8.0',
+        'scipy==1.8.1',
         'seaborn==0.11.2',
         'pyparsing==3.0.9'
     ],
@@ -49,7 +49,7 @@ setup(
         ],
         'image': ['scikit-image==0.19.2'],
         'generic': [
-            'boto3==1.23.0', 
+            'boto3==1.23.5', 
             'moto==3.1.9'
         ],
     },
