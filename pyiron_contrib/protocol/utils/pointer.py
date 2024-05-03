@@ -2,281 +2,137 @@
 # Copyright (c) Max-Planck-Institut für Eisenforschung GmbH - Computational Materials Design (CM) Department
 # Distributed under the terms of "New BSD License", see the LICENSE file.
 
-from enum import Enum
-from pyiron_contrib.protocol.utils.misc import  LoggerMixin, requires_arguments
-from types import MethodType, FunctionType
+import operator
+import functools
+from typing import Any, Callable, Optional, Tuple, Union
+from pyiron_contrib.protocol.utils import ensure_iterable
+
 
 """
-Python implementation of pointers. Pointer can be resolved using ~ operator
+Python implementation of pointers using functional composition. Pointer can be resolved using ~ operator
 """
 
 __author__ = "Dominik Gehringer, Liam Huber"
-__copyright__ = "Copyright 2019, Max-Planck-Institut für Eisenforschung GmbH " \
-                "- Computational Materials Design (CM) Department"
+__copyright__ = (
+    "Copyright 2019, Max-Planck-Institut für Eisenforschung GmbH "
+    "- Computational Materials Design (CM) Department"
+)
 __version__ = "0.0"
 __maintainer__ = "Liam Huber"
 __email__ = "huber@mpie.de"
 __status__ = "development"
-__date__ = "December 10, 2019"
-
-class CrumbType(Enum):
-    """
-    Enum class. Provides the types which Crumbs in an IODictionary are allowed to have
-    """
-
-    Root = 0
-    Attribute = 1
-    Item = 2
+__date__ = "May 21, 2022"
 
 
-class Crumb(LoggerMixin):
-    """
-    Represents a piece in the path of the IODictionary. The Crumbs are used to resolve a recipe path correctly
-    """
+Transform = Callable[[Any], Any]
+Predicate = Callable[[Any], bool]
+Reduction = Callable[[Any, Any], Any]
 
-    def __init__(self, crumb_type, name):
-        """
-        Initializer from crumb
-        Args:
-            crumb_type (CrumbType): the crumb type of the object
-            name (str, object): An object if crumb type is CrumbType.Root otherwise a string
-        """
-        self._crumb_type = crumb_type
-        self._name = name
+
+def circ(f: Transform, g: Transform) -> Transform:
+    return lambda x: f(g(x))
+
+
+def compose(*functions: Transform, reduction: Reduction = circ) -> Transform:
+    return functools.reduce(reduction, functions)
+
+
+def identity(o: Any) -> Any:
+    return o
+
+
+def is_or_contains_pointer(item: Union[Any, Tuple[Any, ...]]) -> bool:
+    return any(isinstance(el, Pointer) for el in ensure_iterable(item))
+
+
+def possibly_deferred_pointer_execution(
+    item: Union[Any, Tuple[Any, ...]], func
+) -> Transform:
+    if is_or_contains_pointer(item):
+        if isinstance(item, tuple):  # more than one arg
+            return lambda o: func(
+                *(~it if isinstance(it, Pointer) else it for it in item)
+            )(o)
+        else:
+            return lambda o: func(~item)(o)
+    else:
+        return func(item)
+
+
+class Pointer:
+    def __init__(
+        self,
+        args: Any,
+        funcs: Optional[Tuple[Transform, ...]] = None,
+        last_item: Optional[str] = None,
+    ):
+        self._args: Tuple[Any, ...] = ensure_iterable(args)
+        self._funcs: Tuple[Transform, ...] = funcs or (identity,)
+        self._callable: Transform = compose(*self._funcs)
+        self._last_item: Optional[str] = last_item or None
 
     @property
-    def name(self):
-        return self._name
+    def funcs(self) -> Tuple[Transform, ...]:
+        return self._funcs
 
     @property
-    def crumb_type(self):
-        return self._crumb_type
+    def args(self) -> Tuple[Any, ...]:
+        return self._args
 
-    @property
-    def object(self):
-        if self.crumb_type != CrumbType.Root:
-            raise ValueError('Only root crumbs store an object')
-        return self._name
+    def compose_pointer(self, f: Transform, last_item: Optional[str] = None):
+        return Pointer(self._args, funcs=(f, *self._funcs), last_item=last_item)
 
-    @staticmethod
-    def attribute(name):
-        """
-        Convenience method to produce an attribute crumb
-
-        Args:
-            name (str): the name of the attribute
-
-        Returns:
-            Crumb: the attribute crumbs
-
-        """
-        return Crumb(CrumbType.Attribute, name)
-
-    @staticmethod
-    def item(name):
-        """
-        Convenience method to produce an item crumb
-
-        Args:
-            name (str): the name of the item
-
-        Returns:
-            Crumb: the item crumb
-        """
-        return Crumb(CrumbType.Item, name)
-
-    @staticmethod
-    def root(obj):
-        """
-        Convenience method to produce a root crumb
-
-        Args:
-            obj: The root object of the path in the IODictionary
-
-        Returns:
-            Crumb: A root crumb, meant to be the first item in a IODictionary path
-        """
-        return Crumb(CrumbType.Root, obj)
-
-    def __repr__(self):
-        return '<{}({}, {})'.format(self.__class__.__name__,
-                                    self.crumb_type.name,
-                                    self.name if isinstance(self.name, str) else self.name.__class__.__name__)
-
-    def __hash__(self):
-        crumb_hash = hash(self._crumb_type)
-        if self._crumb_type == CrumbType.Root:
-            crumb_hash += hash(hex(id(self.object)))
+    def __call__(self, *args, **kwargs):
+        if is_or_contains_pointer(args) or is_or_contains_pointer(
+            tuple(kwargs.values())
+        ):
+            raise NotImplementedError(
+                "Pointers as function (keyword) arguments are not implemented"
+            )
+        if self._last_item is not None:
+            # instead of appending a function to the composition we modify the head from
+            # operator.attrgetter(last_item) -> operator.methodcaller(last_item) using method shortcut
+            _, *rest = self._funcs
+            f = operator.methodcaller(self._last_item, *args, **kwargs)
+            return Pointer(self._args, funcs=(f, *rest))
         else:
-            try:
-                crumb_hash += hash(self._name)
-            except Exception as e:
-                self.logger.exception('Failed to hash "{}" object'.format(type(self._name).__name__), exc_info=e)
-        return crumb_hash
-
-    def __eq__(self, other):
-        """
-        Compares the crumb with an an object "other". Will return False if "other" is not an instance of Crumb
-        Args:
-            other: (object) the object to compare
-
-        Returns: (bool) wether "other" is equal to self
-
-        """
-        if not isinstance(other, Crumb):
-            return False
-        if self.crumb_type == other.crumb_type:
-            if self.crumb_type == CrumbType.Root:
-                return hex(id(self.object)) == hex(id(other.object))
-            else:
-                return self.name == other.name
-        else:
-            return False
-
-
-class Path(list, LoggerMixin):
-    """
-    A object representing a path to an objects attribute. It is a list of "Crumbs"
-    The first object of always a Crumb of type CrumbType.Root followed by an arbitrary sequence of CrumbType.Item
-    or CrumbType.Attribute
-    """
-
-    def append(self, item):
-        if not isinstance(item, Crumb):
-            raise TypeError('A path can only consist of crumbs')
-        else:
-            super(Path, self).append(item)
-
-    def extend(self, collection):
-        if not all([isinstance(item, Crumb) for item in collection]):
-            raise TypeError('A path can only consist of crumbs')
-        else:
-            super(Path, self).extend(collection)
-
-    def index(self, item, **kwargs):
-        if not isinstance(item, Crumb):
-            raise TypeError('A path can only consist of crumbs')
-        else:
-            return super(Path, self).index(item, **kwargs)
-
-    def count(self, item):
-        if not isinstance(item, Crumb):
-            raise TypeError('A path can only consist of crumbs')
-        else:
-            return super(Path, self).count(item)
-
-    @classmethod
-    def join(cls, *p):
-        return Path(p)
-
-
-class Pointer(LoggerMixin):
-    """
-    A class pointing to an object. Can be resolved with ~p. It can be dangling at definition
-    """
-
-    def __init__(self, root):
-        if root is not None:
-            if not isinstance(root, Path):
-                if not isinstance(root, Crumb):
-                    path = [Crumb.root(root)]
-                else:
-                    path = [root]
-            else:
-                path = root.copy()
-        else:
-            raise ValueError('Root object can never be "None"')
-        self.__path = path
+            # we have to assert that the last pointer crumb describes a method which we are going to call
+            return self.compose_pointer(lambda fn: fn(*args, **kwargs))
 
     def __getattr__(self, item):
-        return Pointer(Path.join(*self.__path, Crumb.attribute(item)))
+        return self.compose_pointer(
+            possibly_deferred_pointer_execution(item, operator.attrgetter),
+            last_item=item,
+        )
 
     def __getitem__(self, item):
-        return Pointer(Path.join(*self.__path, Crumb.item(item)))
+        return self.compose_pointer(
+            possibly_deferred_pointer_execution(item, operator.itemgetter)
+        )
 
-    @property
-    def path(self):
-        return self.__path
+    def resolve(self) -> Any:
+        return self._callable(*self._args)
 
-    def _resolve_path(self):
-        """
-        This method resolves the object hiding behind a path (A list of Crumbs)
-
-        Args:
-            path (list<Crumb>): A list of path crumbs used to resolve the data object
-            remaining (int): How many crumbs should be resolved
-
-        Returns:
-            The underlying data object, hiding behind path parameter
-
-        """
-        # Make a copy to ensure, because by passing by reference
-        path = self.path.copy()
-
-        # Have a look at the path and check that it starts with a root crumb
-        root = path.pop(0)
-        if root.crumb_type != CrumbType.Root:
-            raise ValueError('Got invalid path. A valid path starts with a root object')
-        # First element is always an object
-        result = root.object
-        while len(path) > 0:
-            # Take one step in the path, pop the next crumb from the list
-            crumb = path.pop(0)
-            crumb_type = crumb.crumb_type
-            crumb_name = crumb.name
-            # If the result is a pointer itself we have to resolve it first
-            if isinstance(result, Pointer):
-                self.logger.info('Resolved pointer in a pointer path')
-                result = ~result
-            if isinstance(crumb_name, Pointer):
-                self.logger.info('Resolved pointer in a pointer path')
-                crumb_name = ~crumb_name
-            # Resolve it with the correct method - dig deeper
-            if crumb_type == CrumbType.Attribute:
-                try:
-                    result = getattr(result, crumb_name)
-                except AttributeError as e:
-                    self.logger.exception('Cannot fetch value "{}"'.format(crumb_name), exc_info=e)
-                    raise e
-            elif crumb_type == CrumbType.Item:
-                try:
-                    result = result.__getitem__(crumb_name)
-                except (TypeError, KeyError) as e:
-                    raise e
-
-            # Get out of resolve mode
-        return result
-
-    def _resolve_function(self, function):
-        """
-        Convenience function to make IODictionary.resolve more readable. If the value is a function it calls the
-        resolved functions if the do not require arguments
-
-        Args:
-            key (str): the key the value belongs to, just for logging purposes
-            value (object/function): the object to resolve
-
-        Returns:
-            (object): The return value of the functions, if no functions were passed "value" is returned
-        """
-        result = function
-        if isinstance(function, (MethodType, FunctionType)):
-            # Make sure that the function has not parameters or all parameters start with
-            if not requires_arguments(function):
-                try:
-                    # Get the return value
-                    result = function()
-                except Exception as e:
-                    self.logger.exception('Failed to execute callable to resolve values for '
-                                          'path {}'.format(self), exc_info=e)
-                else:
-                    self.logger.debug('Successfully resolved callable for path {}'.format(self))
-            else:
-                self.logger.warning('Found function, but it takes arguments! I \'ll not resolve it.')
-        return result
-
-    def __invert__(self):
+    def __invert__(self) -> Any:
         return self.resolve()
 
-    def resolve(self):
-        return self._resolve_function(self._resolve_path())
+
+if __name__ == "__main__":
+    import numpy as np
+
+    a = np.arange(19) - 1.0j
+
+    assert np.isclose(171.0, Pointer(a).conj().astype(float).sum().resolve())
+
+    b = {1: lambda x: dict(x=x, y=x**x), 2: lambda x: x**2}
+
+    index_pointer = Pointer(b)[1](3).get("y")
+    assert ~index_pointer == 27
+
+    c = np.arange(30**2).reshape(30, 30)
+
+    assert np.allclose(~Pointer(c)[27, :], c[~index_pointer, :])
+
+    d = list(range(20, 50))
+    print(~Pointer(d)[index_pointer])
+    print(~Pointer(d).index(25))
